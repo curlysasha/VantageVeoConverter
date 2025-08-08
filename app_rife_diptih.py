@@ -100,7 +100,7 @@ class RealRIFE:
                         # Manual RIFE setup
                         logging.info("   → Setting up manual RIFE...")
                         try:
-                            self._setup_manual_rife()
+                            self._setup_direct_rife()
                             rife_installed = True
                         except Exception as e:
                             logging.warning(f"   ❌ Manual RIFE failed: {e}")
@@ -175,9 +175,19 @@ class RealRIFE:
             self.available = False
             
         logging.info(f"🎯 Final RIFE method: {self.method.upper()}")
-        logging.info(f"💾 GPU Memory available: {torch.cuda.get_device_properties(0).total_memory // 1024**3 if torch.cuda.is_available() else 0} GB")
-        if torch.cuda.is_available():
-            logging.info(f"🚀 GPU: {torch.cuda.get_device_name(0)}")
+        try:
+            if torch.cuda.is_available():
+                gpu_props = torch.cuda.get_device_properties(0)
+                logging.info(f"🚀 GPU: {torch.cuda.get_device_name(0)}")
+                logging.info(f"💾 GPU Memory available: {gpu_props.total_memory // 1024**3} GB")
+                logging.info(f"🔥 GPU ready for accelerated interpolation!")
+                
+                # Clear any cached memory
+                torch.cuda.empty_cache()
+            else:
+                logging.info("⚠️  No GPU available, using CPU")
+        except Exception as e:
+            logging.warning(f"Could not get GPU info: {e}")
     
     def _download_rife_weights(self, model_url):
         """Download RIFE model weights."""
@@ -701,6 +711,8 @@ def interpolate_video(input_video_path, problem_segments, output_path, rife_mode
     
     try:
         logging.info(f"Starting {rife_mode} interpolation (keeping original FPS: {fps})")
+        if torch.cuda.is_available():
+            logging.info(f"🚀 GPU acceleration enabled for {rife_mode} mode")
         
         while True:
             ret, frame = cap.read()
@@ -1343,7 +1355,7 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
     - **Smart Analysis**: Intelligent problem area detection
     
     **🤖 RIFE Status**: {RIFE_MODEL.method.upper()} - {'✅ AI Ready' if RIFE_MODEL.available else '🚀 Installing on demand'}
-    **🚀 GPU**: {'✅ CUDA Available' if torch.cuda.is_available() else '⚠️ CPU Only'} - {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No GPU'}
+    **🚀 GPU**: {'✅ CUDA Available - ' + (torch.cuda.get_device_name(0) if torch.cuda.is_available() else '') if torch.cuda.is_available() else '⚠️ CPU Only'}
     **💾 VRAM**: {torch.cuda.get_device_properties(0).total_memory // 1024**3 if torch.cuda.is_available() else 0} GB
     
     **⚡ First run**: RIFE AI models download automatically (2-5 minutes one-time setup)
@@ -1446,4 +1458,18 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
 
 if __name__ == '__main__':
     print("Launching Enhanced Video-Audio Synchronizer...")
+    
+    # Display system info
+    if torch.cuda.is_available():
+        try:
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory // 1024**3
+            print(f"🚀 GPU Detected: {gpu_name} ({gpu_memory} GB VRAM)")
+            print(f"🔥 RIFE Method: {RIFE_MODEL.method.upper()}")
+            print("⚡ Ready for GPU-accelerated interpolation!")
+        except Exception as e:
+            print(f"GPU info error: {e}")
+    else:
+        print("⚠️  No GPU detected - using CPU only")
+    
     interface.launch(share=True, server_name="0.0.0.0")
