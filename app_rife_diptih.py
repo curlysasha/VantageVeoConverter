@@ -3,6 +3,7 @@ import os
 import json
 import numpy as np
 from scipy.interpolate import interp1d
+from scipy.signal import savgol_filter
 import cv2
 import whisper
 import logging
@@ -11,9 +12,10 @@ import gradio as gr
 import tempfile
 import time
 import torch
+import warnings
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Global Setup: Load Whisper Model Once ---
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -66,6 +68,100 @@ def run_command(command):
     if result.returncode != 0:
         raise RuntimeError(f"Command failed: {result.stderr}")
     return result.stdout
+
+def validate_video_format(video_path):
+    """Validate video format and codec compatibility."""
+    logging.info("Validating video format...")
+    
+    command = [
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=codec_name,codec_type,r_frame_rate,avg_frame_rate",
+        "-show_entries", "format=format_name,duration",
+        "-of", "json", video_path
+    ]
+    
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        info = json.loads(result.stdout)
+        
+        format_name = info.get('format', {}).get('format_name', '').lower()
+        if 'mp4' not in format_name and 'mov' not in format_name:
+            warnings.warn(f"Video format '{format_name}' may not be compatible with mp4fpsmod. MP4/MOV recommended.")
+        
+        stream = info.get('streams', [{}])[0]
+        codec = stream.get('codec_name', 'unknown')
+        
+        logging.info(f"Video format: {format_name}, Codec: {codec}")
+        return info
+        
+    except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError) as e:
+        logging.warning(f"Could not validate video format: {e}")
+        return None
+
+def detect_vfr_and_get_fps(video_path, video_info=None):
+    """Detect if video has variable frame rate and get accurate FPS."""
+    logging.info("Detecting frame rate...")
+    
+    if video_info:
+        stream = video_info.get('streams', [{}])[0]
+        r_frame_rate = stream.get('r_frame_rate', '')
+        avg_frame_rate = stream.get('avg_frame_rate', '')
+        
+        def parse_fps(fps_str):
+            if '/' in fps_str:
+                num, den = fps_str.split('/')
+                return float(num) / float(den) if float(den) != 0 else 0
+            return 0
+        
+        r_fps = parse_fps(r_frame_rate)
+        avg_fps = parse_fps(avg_frame_rate)
+        
+        if r_fps > 0 and avg_fps > 0:
+            fps_diff = abs(r_fps - avg_fps)
+            if fps_diff > 0.01:
+                logging.warning(f"Variable frame rate detected! r_fps={r_fps:.3f}, avg_fps={avg_fps:.3f}")
+                logging.info("Using average frame rate for processing")
+                return avg_fps, True
+            else:
+                logging.info(f"Constant frame rate: {r_fps:.3f} fps")
+                return r_fps, False
+    
+    cap = cv2.VideoCapture(video_path)
+    opencv_fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    if total_frames > 100:
+        logging.info("Calculating actual FPS from frame timestamps...")
+        timestamps = []
+        sample_size = min(100, total_frames)
+        frame_step = total_frames // sample_size
+        
+        for i in range(0, sample_size * frame_step, frame_step):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+            timestamp = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+            timestamps.append(timestamp)
+        
+        if len(timestamps) > 1:
+            intervals = np.diff(timestamps)
+            avg_interval = np.mean(intervals)
+            calculated_fps = (1.0 / avg_interval) / frame_step if avg_interval > 0 else opencv_fps
+            
+            fps_variance = np.std(intervals) / avg_interval if avg_interval > 0 else 0
+            is_vfr = fps_variance > 0.1
+            
+            if is_vfr:
+                logging.warning(f"Variable frame rate detected through timestamp analysis!")
+            
+            logging.info(f"Calculated FPS: {calculated_fps:.3f}, OpenCV FPS: {opencv_fps:.3f}")
+            
+            if abs(calculated_fps - opencv_fps) > 1.0:
+                logging.info(f"Using calculated FPS: {calculated_fps:.3f}")
+                cap.release()
+                return calculated_fps, is_vfr
+    
+    cap.release()
+    logging.info(f"Using OpenCV detected FPS: {opencv_fps:.3f}")
+    return opencv_fps, False
 
 # --- Synchronization Steps ---
 
@@ -290,7 +386,11 @@ def interpolate_video(input_video_path, problem_segments, output_path, rife_mode
     
     return True
 
-def generate_vfr_timecodes(video_path, align_source_path, align_target_path, output_timecode_path):
+def generate_vfr_timecodes(video_path, align_source_path, align_target_path, output_timecode_path,
+                          smooth_interpolation=True, progress_callback=None):
+    """Enhanced VFR timecode generation with smoothing and better edge handling."""
+    logging.info("Generating VFR timecodes with improvements...")
+    
     with open(align_source_path) as f: align_source = json.load(f)
     with open(align_target_path) as f: align_target = json.load(f)
 
@@ -301,15 +401,67 @@ def generate_vfr_timecodes(video_path, align_source_path, align_target_path, out
         T_source.append(float(align_source['fragments'][i]['end']))
         T_target.append(float(align_target['fragments'][i]['end']))
 
-    alignment_func = interp1d(T_source, T_target, bounds_error=False, fill_value="extrapolate")
-
+    # Get video details with improved FPS detection
+    video_info = validate_video_format(video_path)
+    video_fps, is_vfr = detect_vfr_and_get_fps(video_path, video_info)
+    
+    if is_vfr:
+        logging.warning("Processing variable frame rate video - results may vary")
+    
     cap = cv2.VideoCapture(video_path)
-    video_fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    video_duration = total_frames / video_fps
     cap.release()
 
+    # Improved edge handling
+    if T_source[-1] < video_duration:
+        T_source.append(video_duration)
+        if len(T_target) > 1:
+            rate = (T_target[-1] - T_target[-2]) / (T_source[-1] - T_source[-2])
+            T_target.append(T_target[-1] + rate * (video_duration - T_source[-2]))
+        else:
+            T_target.append(video_duration)
+    
+    # Enhanced interpolation
+    if smooth_interpolation and len(T_source) > 3:
+        try:
+            from scipy.interpolate import CubicSpline
+            alignment_func = CubicSpline(T_source, T_target, bc_type='natural', extrapolate=False)
+            logging.info("Using cubic spline interpolation for smoother time warping")
+        except:
+            alignment_func = interp1d(T_source, T_target, kind='linear', 
+                                    bounds_error=False, fill_value=(T_target[0], T_target[-1]))
+            logging.info("Using linear interpolation")
+    else:
+        alignment_func = interp1d(T_source, T_target, kind='linear',
+                                bounds_error=False, fill_value=(T_target[0], T_target[-1]))
+
+    # Map frames with progress logging
     original_timestamps = np.arange(total_frames) / video_fps
-    new_timestamps_ms = (alignment_func(original_timestamps) * 1000).round().astype(int)
+    log_interval = max(1, total_frames // 20)
+    
+    new_timestamps = []
+    for i, t in enumerate(original_timestamps):
+        new_t = alignment_func(t)
+        new_timestamps.append(new_t)
+        
+        if progress_callback and i % log_interval == 0:
+            progress = (i / total_frames) * 100
+            progress_callback(progress, f"Processing frame {i}/{total_frames}")
+            logging.info(f"Timecode generation: {progress:.1f}% complete")
+    
+    new_timestamps = np.array(new_timestamps)
+    
+    # Apply smoothing filter
+    if smooth_interpolation and len(new_timestamps) > 51:
+        try:
+            window_length = min(51, len(new_timestamps) if len(new_timestamps) % 2 == 1 else len(new_timestamps) - 1)
+            new_timestamps = savgol_filter(new_timestamps, window_length, 3)
+            logging.info("Applied smoothing filter to timestamps")
+        except:
+            logging.warning("Could not apply smoothing filter")
+    
+    new_timestamps_ms = (new_timestamps * 1000).round().astype(int)
 
     new_timestamps_ms = np.maximum(0, new_timestamps_ms)
     if len(new_timestamps_ms) > 0 and new_timestamps_ms[0] != 0:
@@ -318,11 +470,17 @@ def generate_vfr_timecodes(video_path, align_source_path, align_target_path, out
     with open(output_timecode_path, 'w') as f:
         f.write("# timecode format v2\n")
         prev_timestamp = -1
+        collision_count = 0
+        
         for timestamp in new_timestamps_ms:
             if timestamp <= prev_timestamp:
                 timestamp = prev_timestamp + 1
+                collision_count += 1
             f.write(f"{timestamp}\n")
             prev_timestamp = timestamp
+        
+        if collision_count > 0:
+            logging.warning(f"Resolved {collision_count} timestamp collisions")
 
 def regenerate_timecodes_for_interpolated_video(original_video_path, interpolated_video_path, original_timecode_path, new_timecode_path):
     """Пересчитывает timecode для интерполированного видео."""
@@ -704,8 +862,21 @@ def synchronization_workflow(input_video_path, target_audio_path, rife_mode="off
             progress(0.5, desc="4/8: Aligning Target...")
             forced_alignment(paths["target_audio_processed"], paths["transcript"], paths["align_target"])
             
-            progress(0.65, desc="5/8: Calculating VFR timecodes...")
-            generate_vfr_timecodes(input_video_path, paths["align_source"], paths["align_target"], paths["timecodes"])
+            progress(0.65, desc="5/8: Calculating enhanced VFR timecodes...")
+            
+            # Progress callback for timecode generation
+            def timecode_progress(percent, message):
+                overall_progress = 0.65 + (percent / 100) * 0.1
+                progress(overall_progress, desc=f"5/8: {message}")
+            
+            generate_vfr_timecodes(
+                input_video_path, 
+                paths["align_source"], 
+                paths["align_target"], 
+                paths["timecodes"],
+                smooth_interpolation=True,
+                progress_callback=timecode_progress
+            )
             
             # RIFE interpolation
             video_for_retiming = input_video_path
@@ -746,7 +917,11 @@ def synchronization_workflow(input_video_path, target_audio_path, rife_mode="off
             
             duration = time.time() - start_time
             
-            # Status message
+            # Get FPS info for status
+            video_info = validate_video_format(input_video_path)
+            fps, is_vfr = detect_vfr_and_get_fps(input_video_path, video_info)
+            
+            # Enhanced status message
             mode_note = ""
             if rife_mode != "off":
                 if interpolation_applied:
@@ -754,7 +929,14 @@ def synchronization_workflow(input_video_path, target_audio_path, rife_mode="off
                 else:
                     mode_note = f" ({rife_mode} mode - no interpolation needed)"
             
-            status_msg = f"Synchronization successful{mode_note}! Processed in {duration:.2f} seconds.\n\n--- Transcript Preview ---\n{transcript_text[:1000]}..."
+            status_msg = f"""Synchronization successful{mode_note}! 
+Processing time: {duration:.2f} seconds
+Video FPS: {fps:.3f} {'(Variable Frame Rate detected)' if is_vfr else '(Constant Frame Rate)'}
+Smoothing: Enabled (cubic spline + filter)
+
+--- Transcript Preview ---
+{transcript_text[:1000]}..."""
+            
             return final_output_path, status_msg
 
     except Exception as e:
@@ -768,9 +950,19 @@ def synchronization_workflow(input_video_path, target_audio_path, rife_mode="off
 
 # --- Gradio Interface ---
 
-with gr.Blocks(title="Video-Audio Synchronizer with RIFE") as interface:
-    gr.Markdown("# Video-to-Audio Non-Linear Synchronizer")
-    gr.Markdown("Upload source video and target audio. Choose RIFE mode for enhanced smoothness or compare all modes.")
+with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface:
+    gr.Markdown("# Enhanced Video-to-Audio Non-Linear Synchronizer with RIFE")
+    gr.Markdown("""
+    Upload source video and target audio. Choose RIFE mode for enhanced smoothness or compare all modes.
+    
+    **🚀 New Features:**
+    - Automatic VFR (Variable Frame Rate) detection
+    - Video format validation and compatibility checking
+    - Cubic spline interpolation with smoothing filters
+    - Progress tracking for long videos
+    - Improved edge case handling
+    - Enhanced logging and diagnostics
+    """)
     
     with gr.Row():
         with gr.Column():
