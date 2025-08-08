@@ -1,158 +1,46 @@
 """
-Video processing and interpolation
+Video processing and interpolation - Simplified version
 """
 import logging
-import cv2
-import torch
-import numpy as np
 import shutil
-from .timing_analyzer import detect_duplicate_frames, _create_variation
+from .simple_interpolator import SimpleFrameInterpolator
 
 def interpolate_video(input_video_path, problem_segments, output_path, rife_mode, rife_model):
-    """Interpolate video with smart duplicate frame replacement."""
-    if not problem_segments or rife_mode == "off":
+    """Simple and reliable video interpolation."""
+    if rife_mode == "off":
         shutil.copy2(input_video_path, output_path)
         return False
     
-    cap = cv2.VideoCapture(input_video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    logging.info(f"🚀 Starting {rife_mode} interpolation")
     
-    # Load all frames first for analysis
-    logging.info("🎬 Pre-loading frames for duplicate detection...")
-    all_frames = []
-    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    # Initialize simple interpolator
+    interpolator = SimpleFrameInterpolator(device="cuda" if rife_model.device == "cuda" else "cpu")
     
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        all_frames.append(frame)
-    cap.release()
+    # Different thresholds for different modes
+    if rife_mode == "precision":
+        threshold = 0.01  # Very sensitive to duplicates
+    elif rife_mode == "adaptive":
+        threshold = 0.02  # Moderate sensitivity
+    elif rife_mode == "maximum":
+        threshold = 0.05  # Less sensitive, more aggressive interpolation
+    else:
+        threshold = 0.02
     
-    logging.info(f"📊 Loaded {len(all_frames)} frames for analysis")
+    # Process video with simple strategy
+    result = interpolator.process_video_simple(
+        input_video_path, 
+        output_path, 
+        duplicate_threshold=threshold
+    )
     
-    # Detect duplicate frames by comparing consecutive frames
-    duplicate_map = detect_duplicate_frames(all_frames)
-    duplicate_count = len(duplicate_map)
-    logging.info(f"🔍 Found {duplicate_count} duplicate/similar frames ({duplicate_count/len(all_frames)*100:.1f}%)")
-    
-    # Create output video with duplicate replacement
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    
-    replaced_count = 0
-    interpolated_count = 0
-    
-    try:
-        logging.info(f"🚀 Starting {rife_mode} with duplicate replacement")
-        if torch.cuda.is_available():
-            logging.info(f"💾 GPU acceleration enabled")
-        
-        for current_frame in range(len(all_frames)):
-            frame = all_frames[current_frame]
-            
-            # Check if this frame is a duplicate and should be replaced
-            if current_frame in duplicate_map and current_frame > 0:
-                # This is a duplicate frame - replace it with interpolation
-                ref_frame_idx = duplicate_map[current_frame]['reference_frame']
-                ref_frame = all_frames[ref_frame_idx]
-                
-                # Find next non-duplicate frame for interpolation target
-                target_frame_idx = current_frame + 1
-                while (target_frame_idx < len(all_frames) and 
-                       target_frame_idx in duplicate_map):
-                    target_frame_idx += 1
-                
-                if target_frame_idx < len(all_frames):
-                    target_frame = all_frames[target_frame_idx]
-                    
-                    try:
-                        # Create interpolated frame to replace duplicate
-                        interpolation_factor = current_frame - ref_frame_idx
-                        max_interpolation = target_frame_idx - ref_frame_idx
-                        
-                        if max_interpolation > 0:
-                            timestep = interpolation_factor / max_interpolation
-                            
-                            # Use RIFE to create replacement frame
-                            interpolated_frames = rife_model.interpolate_frames(
-                                ref_frame, target_frame, 1
-                            )
-                            
-                            if interpolated_frames:
-                                # Use interpolated frame instead of duplicate
-                                replacement_frame = interpolated_frames[0]
-                                out.write(replacement_frame)
-                                replaced_count += 1
-                                
-                                if current_frame % 50 == 0:
-                                    logging.info(f"🔄 Replaced duplicate frame {current_frame} with interpolation")
-                            else:
-                                # Fallback: use original frame with slight modification
-                                modified_frame = _create_variation(frame)
-                                out.write(modified_frame)
-                                replaced_count += 1
-                        else:
-                            out.write(frame)
-                    
-                    except Exception as e:
-                        logging.warning(f"Failed to replace duplicate frame {current_frame}: {e}")
-                        out.write(frame)
-                else:
-                    # No target frame found, use original
-                    out.write(frame)
-            else:
-                # Normal frame or first frame - write as is
-                out.write(frame)
-            
-            # Additional interpolation for problem segments (if not maximum mode)
-            if rife_mode != "maximum":
-                needs_extra_interpolation = any(
-                    seg['start_frame'] <= current_frame <= seg['end_frame']
-                    for seg in problem_segments
-                )
-                
-                if (needs_extra_interpolation and 
-                    current_frame > 0 and 
-                    current_frame not in duplicate_map):
-                    
-                    try:
-                        prev_frame = all_frames[current_frame - 1]
-                        extra_interpolated = rife_model.interpolate_frames(
-                            prev_frame, frame, 1
-                        )
-                        
-                        for extra_frame in extra_interpolated:
-                            out.write(extra_frame)
-                            interpolated_count += 1
-                            
-                    except Exception as e:
-                        logging.debug(f"Extra interpolation failed at {current_frame}: {e}")
-            
-            # Progress logging
-            if current_frame % 100 == 0:
-                progress = (current_frame / len(all_frames)) * 100
-                logging.info(f"Progress: {progress:.1f}% - Replaced: {replaced_count}, Added: {interpolated_count}")
-                
-                if torch.cuda.is_available() and current_frame % 500 == 0:
-                    gpu_memory = torch.cuda.memory_allocated() / 1024**2
-                    logging.info(f"💾 GPU Memory: {gpu_memory:.1f}MB")
-    
-    finally:
-        out.release()
-    
-    # Results
-    total_modifications = replaced_count + interpolated_count
-    logging.info(f"✅ Interpolation complete!")
-    logging.info(f"🔄 Replaced {replaced_count} duplicate frames")
-    logging.info(f"➕ Added {interpolated_count} extra interpolated frames")
-    logging.info(f"🎯 Total improvements: {total_modifications} frames")
-    logging.info(f"📈 Improvement rate: {total_modifications/len(all_frames)*100:.1f}%")
-    
-    return True
+    # Log results
+    if result["duplicates_replaced"] > 0:
+        logging.info(f"✅ {rife_mode.title()} interpolation successful!")
+        logging.info(f"📊 Improved {result['duplicates_replaced']} frames ({result['replaced_percentage']:.1f}%)")
+        return True
+    else:
+        logging.info(f"ℹ️  No duplicates found for {rife_mode} mode")
+        return False
 
 def regenerate_timecodes_for_interpolated_video(original_video_path, interpolated_video_path, original_timecode_path, new_timecode_path):
     """Пересчитывает timecode для интерполированного видео."""
