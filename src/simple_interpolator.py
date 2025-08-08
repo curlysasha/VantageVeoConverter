@@ -101,9 +101,13 @@ class SimpleFrameInterpolator:
                     # Interpolate
                     result = tensor1 * (1 - curve) + tensor2 * curve
                     
-                    # Apply slight blur for motion smoothness
+                    # Apply slight blur for motion smoothness (skip if not available)
                     if diff > 0.1:  # High motion
-                        result = F.gaussian_blur(result, kernel_size=3, sigma=0.5)
+                        try:
+                            result = F.gaussian_blur(result, kernel_size=3, sigma=0.5)
+                        except AttributeError:
+                            # gaussian_blur not available in older PyTorch versions
+                            pass
                 
                 # Convert back to numpy
                 result = torch.clamp(result, 0, 1)

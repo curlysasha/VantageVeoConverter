@@ -1,45 +1,44 @@
 """
-Video processing and interpolation - Simplified version
+Video processing and interpolation - Smart version
 """
 import logging
 import shutil
-from .simple_interpolator import SimpleFrameInterpolator
+import cv2
+import os
+import tempfile
+from .motion_preserving_interpolator import MotionPreservingInterpolator
 
 def interpolate_video(input_video_path, problem_segments, output_path, rife_mode, rife_model):
-    """Simple and reliable video interpolation."""
+    """Motion-preserving video interpolation using dedicated processor."""
     if rife_mode == "off":
         shutil.copy2(input_video_path, output_path)
         return False
     
-    logging.info(f"🚀 Starting {rife_mode} interpolation")
+    logging.info(f"🎭 Starting {rife_mode} motion-preserving interpolation")
     
-    # Initialize simple interpolator
-    interpolator = SimpleFrameInterpolator(device="cuda" if rife_model.device == "cuda" else "cpu")
+    if not problem_segments:
+        logging.info("ℹ️  No timing problems detected - copying original video")
+        shutil.copy2(input_video_path, output_path)
+        return False
     
-    # Different thresholds for different modes
-    if rife_mode == "precision":
-        threshold = 0.01  # Very sensitive to duplicates
-    elif rife_mode == "adaptive":
-        threshold = 0.02  # Moderate sensitivity
-    elif rife_mode == "maximum":
-        threshold = 0.05  # Less sensitive, more aggressive interpolation
-    else:
-        threshold = 0.02
+    # Use the motion-preserving interpolator directly
+    interpolator = MotionPreservingInterpolator(device="cuda" if rife_model.device == "cuda" else "cpu")
     
-    # Process video with simple strategy
-    result = interpolator.process_video_simple(
-        input_video_path, 
-        output_path, 
-        duplicate_threshold=threshold
-    )
-    
-    # Log results
-    if result["duplicates_replaced"] > 0:
-        logging.info(f"✅ {rife_mode.title()} interpolation successful!")
-        logging.info(f"📊 Improved {result['duplicates_replaced']} frames ({result['replaced_percentage']:.1f}%)")
-        return True
-    else:
-        logging.info(f"ℹ️  No duplicates found for {rife_mode} mode")
+    try:
+        result = interpolator.process_video_motion_preserving(
+            input_video_path, 
+            output_path, 
+            problem_segments, 
+            mode=rife_mode
+        )
+        
+        frames_fixed = result.get("frames_fixed", 0)
+        return frames_fixed > 0
+        
+    except Exception as e:
+        logging.error(f"Motion-preserving interpolation failed: {e}")
+        # Fallback - copy original
+        shutil.copy2(input_video_path, output_path)
         return False
 
 def regenerate_timecodes_for_interpolated_video(original_video_path, interpolated_video_path, original_timecode_path, new_timecode_path):

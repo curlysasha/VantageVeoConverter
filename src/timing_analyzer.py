@@ -5,7 +5,7 @@ import logging
 import numpy as np
 import cv2
 
-def analyze_timing_changes(timecode_path, fps=25, rife_mode="off"):
+def analyze_timing_changes(timecode_path, fps=25, rife_mode="off", video_path=None):
     """Analyze timing changes and detect duplicate/missing frames based on mode."""
     with open(timecode_path, 'r') as f:
         lines = [line.strip() for line in f.readlines() if not line.startswith('#')]
@@ -78,8 +78,15 @@ def analyze_timing_changes(timecode_path, fps=25, rife_mode="off"):
     logging.info(f"   • Fast segments (dropped frames): {len(fast_segments)}")
     logging.info(f"   • Slow segments (duplicated frames): {len(slow_segments)}")
     
+    # Add visual duplicate detection if video path provided
+    visual_duplicates = []
+    if video_path:
+        logging.info("🎥 Analyzing video frames for visual duplicates...")
+        visual_duplicates = detect_visual_duplicates_from_video(video_path, rife_mode)
+        logging.info(f"   • Found {len(visual_duplicates)} visual duplicate frames")
+    
     # Focus on segments that need interpolation (duplicates and slow segments)
-    interpolation_candidates = duplicate_frames + slow_segments + fast_segments
+    interpolation_candidates = duplicate_frames + slow_segments + fast_segments + visual_duplicates
     
     if not interpolation_candidates:
         logging.info(f"{rife_mode.title()} mode: no timing issues detected above {threshold:.1%} threshold")
@@ -164,6 +171,173 @@ def detect_duplicate_frames(frames, similarity_threshold=0.01):
             logging.info(f"Duplicate detection: {i}/{len(frames)} frames processed")
     
     return duplicate_map
+
+def detect_visual_duplicates_from_video(video_path, mode="adaptive"):
+    """
+    Advanced visual duplicate detection using multiple comparison methods.
+    Detects frozen/stuck frames even with slight variations.
+    """
+    cap = cv2.VideoCapture(video_path)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    # Adaptive thresholds based on mode
+    if mode == "precision":
+        pixel_threshold = 0.02      # 2% pixel difference max
+        structural_threshold = 0.98 # 98% structural similarity min
+        check_distance = 2
+    else:  # adaptive
+        pixel_threshold = 0.05      # 5% pixel difference max  
+        structural_threshold = 0.95 # 95% structural similarity min
+        check_distance = 5
+    
+    logging.info(f"🎥 Advanced freeze detection (mode: {mode})")
+    logging.info(f"   Pixel threshold: {pixel_threshold:.1%}, Structural: {structural_threshold:.1%}")
+    
+    visual_duplicates = []
+    
+    # Process video frame by frame without loading all into memory
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    
+    # Keep sliding window of recent frames for comparison
+    frame_window = []
+    window_size = min(check_distance + 1, 10)
+    
+    frame_idx = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # Convert and resize for faster processing
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        # Resize for faster comparison (maintain aspect ratio)
+        height, width = gray.shape
+        if width > 480:  # Scale down large frames
+            scale = 480.0 / width
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            gray = cv2.resize(gray, (new_width, new_height))
+        
+        # Add to sliding window
+        frame_window.append({
+            'index': frame_idx,
+            'frame': gray,
+            'mean': np.mean(gray),
+            'std': np.std(gray)
+        })
+        
+        # Keep only recent frames
+        if len(frame_window) > window_size:
+            frame_window.pop(0)
+        
+        # Compare with recent frames
+        if frame_idx > 0:
+            current_frame_data = frame_window[-1]
+            
+            for i in range(len(frame_window) - 2, -1, -1):  # Go backwards through window
+                ref_frame_data = frame_window[i]
+                distance = frame_idx - ref_frame_data['index']
+                
+                if distance > check_distance:
+                    break
+                
+                # Quick statistical comparison first
+                mean_diff = abs(current_frame_data['mean'] - ref_frame_data['mean'])
+                std_diff = abs(current_frame_data['std'] - ref_frame_data['std'])
+                
+                # If stats are very different, skip detailed comparison
+                if mean_diff > 10 or std_diff > 15:
+                    continue
+                
+                # Detailed pixel comparison
+                current_frame = current_frame_data['frame']
+                ref_frame = ref_frame_data['frame']
+                
+                # Multiple comparison methods
+                freeze_detected = False
+                
+                # Method 1: Simple pixel difference
+                diff = cv2.absdiff(current_frame, ref_frame)
+                pixel_diff_ratio = np.mean(diff) / 255.0
+                
+                if pixel_diff_ratio < pixel_threshold:
+                    freeze_detected = True
+                    method = "pixel_diff"
+                    score = 1.0 - pixel_diff_ratio
+                
+                # Method 2: Structural similarity (if pixel diff is borderline)
+                elif pixel_diff_ratio < pixel_threshold * 2:
+                    try:
+                        # Calculate SSIM-like measure
+                        mean1, mean2 = np.mean(current_frame), np.mean(ref_frame)
+                        var1, var2 = np.var(current_frame), np.var(ref_frame)
+                        covar = np.mean((current_frame - mean1) * (ref_frame - mean2))
+                        
+                        c1, c2 = 0.01, 0.03
+                        ssim = ((2 * mean1 * mean2 + c1) * (2 * covar + c2)) / \
+                               ((mean1**2 + mean2**2 + c1) * (var1 + var2 + c2))
+                        
+                        if ssim > structural_threshold:
+                            freeze_detected = True
+                            method = "structural"
+                            score = ssim
+                            
+                    except:
+                        pass  # Skip SSIM if calculation fails
+                
+                if freeze_detected:
+                    visual_duplicates.append({
+                        'frame': frame_idx,
+                        'reference_frame': ref_frame_data['index'],
+                        'similarity': score,
+                        'pixel_diff': pixel_diff_ratio,
+                        'type': 'visual_freeze',
+                        'method': method,
+                        'distance': distance
+                    })
+                    break  # Found freeze, stop checking this frame
+        
+        frame_idx += 1
+        
+        # Progress update
+        if frame_idx % 100 == 0:
+            logging.info(f"   Analyzing: {frame_idx}/{total_frames} frames ({len(visual_duplicates)} freezes found)")
+    
+    cap.release()
+    
+    # Remove duplicate detections (same frame detected multiple times)
+    unique_duplicates = []
+    seen_frames = set()
+    
+    for dup in visual_duplicates:
+        if dup['frame'] not in seen_frames:
+            unique_duplicates.append(dup)
+            seen_frames.add(dup['frame'])
+    
+    logging.info(f"🎭 Advanced freeze detection complete!")
+    logging.info(f"   • Found {len(unique_duplicates)} frozen/duplicate frames")
+    logging.info(f"   • Detection rate: {len(unique_duplicates)/total_frames*100:.1f}% of video")
+    
+    # Show detailed examples
+    if unique_duplicates:
+        method_counts = {}
+        for dup in unique_duplicates:
+            method = dup.get('method', 'unknown')
+            method_counts[method] = method_counts.get(method, 0) + 1
+        
+        logging.info(f"   • Detection methods: {dict(method_counts)}")
+        logging.info("   • Examples found:")
+        
+        for i, dup in enumerate(unique_duplicates[:3]):  # Show first 3
+            logging.info(f"      Frame {dup['frame']} → {dup['reference_frame']} "
+                        f"({dup['method']}: {dup['similarity']:.3f}, "
+                        f"pixel_diff: {dup.get('pixel_diff', 0):.3f})")
+        
+        if len(unique_duplicates) > 3:
+            logging.info(f"      ... and {len(unique_duplicates) - 3} more frozen frames")
+    
+    return unique_duplicates
 
 def _create_variation(frame):
     """Create subtle variation of a frame to avoid exact duplication."""

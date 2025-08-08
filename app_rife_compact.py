@@ -114,7 +114,7 @@ def synchronization_workflow(input_video_path, target_audio_path, rife_mode="off
             
             if rife_mode != "off":
                 progress(0.75, desc=f"6/8: Analyzing for {rife_mode} interpolation...")
-                problem_segments = analyze_timing_changes(paths["timecodes"], rife_mode=rife_mode)
+                problem_segments = analyze_timing_changes(paths["timecodes"], rife_mode=rife_mode, video_path=input_video_path)
                 
                 if problem_segments or rife_mode == "maximum":
                     progress(0.8, desc=f"6/8: Applying {rife_mode} interpolation...")
