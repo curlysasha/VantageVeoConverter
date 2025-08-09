@@ -122,18 +122,49 @@ class RealRIFE:
                         else:
                             weights = torch.load(weight_path, map_location=self.device)
                         
-                        # Try different weight loading approaches
-                        if hasattr(self.model, 'load_state_dict'):
-                            self.model.load_state_dict(weights, strict=False)
-                        elif hasattr(self.model, 'flownet'):
-                            self.model.flownet.load_state_dict(weights, strict=False)
+                        logging.info(f"   Weights type: {type(weights)}")
+                        
+                        # Handle different weight formats
+                        if isinstance(weights, dict):
+                            # Standard dict format
+                            state_dict = weights
+                        elif isinstance(weights, int):
+                            # This is likely an epoch number, skip
+                            logging.warning(f"   File contains epoch number ({weights}), not weights - skipping")
+                            continue
+                        elif hasattr(weights, 'state_dict'):
+                            # Model checkpoint format
+                            state_dict = weights.state_dict()
                         else:
-                            logging.warning("⚠️ Unknown model structure for weight loading")
+                            logging.warning(f"   Unknown weights format: {type(weights)}")
                             continue
                         
-                        logging.info("✅ RIFE pretrained weights loaded successfully!")
-                        weights_loaded = True
-                        break
+                        logging.info(f"   State dict keys: {len(state_dict)} items")
+                        
+                        # Try different loading approaches
+                        load_success = False
+                        
+                        if hasattr(self.model, 'load_state_dict'):
+                            try:
+                                self.model.load_state_dict(state_dict, strict=False)
+                                load_success = True
+                            except Exception as e:
+                                logging.warning(f"   Model load_state_dict failed: {e}")
+                        
+                        if not load_success and hasattr(self.model, 'flownet'):
+                            try:
+                                self.model.flownet.load_state_dict(state_dict, strict=False)
+                                load_success = True
+                            except Exception as e:
+                                logging.warning(f"   Flownet load_state_dict failed: {e}")
+                        
+                        if load_success:
+                            logging.info("✅ RIFE pretrained weights loaded successfully!")
+                            weights_loaded = True
+                            break
+                        else:
+                            logging.warning("⚠️ Failed to apply weights to model")
+                            continue
                         
                     except Exception as e:
                         logging.warning(f"⚠️ Failed to load weights from {weight_path}: {e}")
@@ -142,7 +173,10 @@ class RealRIFE:
             if not weights_loaded:
                 logging.warning("⚠️ No pretrained weights found - using random initialization")
                 logging.warning("   This will cause poor interpolation quality!")
-                logging.info("   To fix: Download flownet.pkl from RIFE GitHub releases")
+                logging.info("   To fix: Download PROPER RIFE weights")
+                logging.info("   Try these files from RIFE GitHub:")
+                logging.info("   - train_log/flownet.pkl (not the root flownet.pkl)")  
+                logging.info("   - Or contextnet.pkl + unet.pkl")
                 logging.info(f"   Place in: {os.path.join(project_root, 'weights', 'flownet.pkl')}")
                 
         except Exception as e:
