@@ -132,17 +132,43 @@ class RealRIFE:
             # Import RIFE modules
             sys.path.insert(0, self.rife_dir)
             
-            # Try different import paths
-            try:
-                from model.RIFE_HDv3 import Model
-            except ImportError:
+            # Try different import paths for RIFE model
+            model_class = None
+            # Check what files actually exist in the repository
+            rife_model_files = []
+            for root, dirs, files in os.walk(self.rife_dir):
+                for file in files:
+                    if file.endswith('.py') and ('RIFE' in file or 'model' in file.lower()):
+                        rel_path = os.path.relpath(os.path.join(root, file), self.rife_dir)
+                        rife_model_files.append(rel_path)
+                        logging.info(f"   Found RIFE file: {rel_path}")
+            
+            import_paths = [
+                # Try based on actual files found
+                ("model.RIFE_HDv3", "Model"),
+                ("RIFE_HDv3", "Model"),
+                ("model.RIFE", "Model"), 
+                ("RIFE", "Model"),
+                ("IFNet_HDv3", "Model"),
+                ("model.IFNet_HDv3", "Model")
+            ]
+            
+            for module_path, class_name in import_paths:
                 try:
-                    from RIFE_HDv3 import Model
-                except ImportError:
-                    raise Exception("❌ Cannot import RIFE model! NO FALLBACKS!")
+                    logging.info(f"   Trying import: from {module_path} import {class_name}")
+                    module = __import__(module_path, fromlist=[class_name])
+                    model_class = getattr(module, class_name)
+                    logging.info(f"   ✅ Successfully imported {module_path}.{class_name}")
+                    break
+                except (ImportError, AttributeError) as e:
+                    logging.debug(f"   ❌ Import failed: {module_path}.{class_name} - {e}")
+                    continue
+            
+            if model_class is None:
+                raise Exception("❌ Cannot import REAL RIFE model! NO FALLBACKS!")
             
             # Initialize model
-            self.model = Model()
+            self.model = model_class()
             
             # Load weights
             model_path = os.path.join(self.rife_dir, "train_log", "flownet.pkl")
@@ -159,7 +185,7 @@ class RealRIFE:
             logging.error(f"Model loading failed: {e}")
             raise Exception("❌ RIFE model loading failed! NO FALLBACKS!")
     
-    # NO FALLBACKS! ONLY REAL RIFE!
+    # NO MINIMAL MODELS! ONLY REAL RIFE!
     
     def interpolate_frames(self, frame1, frame2, num_intermediate=1):
         """Interpolate frames using REAL RIFE."""
