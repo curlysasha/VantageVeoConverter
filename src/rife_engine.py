@@ -3,7 +3,7 @@ RIFE AI Engine - Clean wrapper for Real RIFE
 """
 import logging
 import torch
-from .real_rife import RealRIFE as RealRIFEModel
+from .comfy_rife import ComfyRIFE as RealRIFEModel
 
 class RealRIFE:
     """Clean wrapper for Real RIFE implementation."""
