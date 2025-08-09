@@ -24,6 +24,7 @@ from src.simple_diagnostic import create_simple_diagnostic
 from src.comparison_diagnostic import create_comparison_diagnostic
 from src.physical_retime import create_physical_retime
 from src.predictive_diagnostic import create_predictive_diagnostic
+from src.triple_diagnostic import create_triple_diagnostic
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -236,23 +237,25 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             progress(0.75, desc="6/7: Creating video with physical frame duplicates...")
             create_physical_retime(input_video_path, paths["timecodes"], paths["retimed_video"])
             
-            # Create predictive diagnostic using timecode analysis
-            progress(0.85, desc="7/7: Creating predictive freeze diagnostic...")
-            marked_frames, report = create_predictive_diagnostic(
+            # Create triple diagnostic: Original + Detection + AI Repair
+            progress(0.85, desc="7/7: Creating AI diagnostic (Original + Detection + Repair)...")
+            marked_frames, report = create_triple_diagnostic(
                 paths["retimed_video"],  # Use synchronized video as source
                 paths["timecodes"],      # Analyze timecodes for predictions
-                diag_output_path        # Create predictive comparison video
+                diag_output_path,       # Create triple comparison video
+                RIFE_MODEL              # Use RIFE for AI repair
             )
             
             duration = time.time() - start_time
             
             # Status message  
-            status_msg = f"""🔍 DIAGNOSTIC ANALYSIS COMPLETE!
+            status_msg = f"""🤖 AI DIAGNOSTIC COMPLETE!
 Processing time: {duration:.2f} seconds
 
 {report}
 
-The video is identical to "sync without RIFE" - this confirms the freeze detection is working correctly."""
+🎬 Triple comparison shows: Original → Freeze Detection → AI Repair
+Watch the bottom panel to see RIFE-repaired smooth video!"""
             
             return diag_output_path, status_msg
     
@@ -442,11 +445,11 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
             submit_button = gr.Button("Start Synchronization", variant="primary")
             
             gr.Markdown("---")
-            gr.Markdown("### 🔍 Diagnostic Mode")
-            gr.Markdown("Visualize detected problem frames without interpolation")
-            gr.Markdown("**Note:** Uses ultra-sensitive detection to catch ALL potential issues")
+            gr.Markdown("### 🤖 AI Diagnostic Mode")
+            gr.Markdown("Creates 3-panel comparison: Original + Freeze Detection + AI Repair")
+            gr.Markdown("**New:** Uses RIFE to repair detected freezes and shows results!")
             
-            diagnostic_button = gr.Button("🔍 Run Diagnostic (Show Problem Frames)", variant="secondary")
+            diagnostic_button = gr.Button("🤖 Run AI Diagnostic (Detection + Repair)", variant="secondary")
             
             gr.Markdown("---")
             gr.Markdown("### Compare All Modes")
@@ -495,14 +498,14 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
     with gr.Row():
         with gr.Column():
             gr.Markdown("""
-            ### 🔍 **Diagnostic Mode**
+            ### 🤖 **AI Diagnostic Mode**
             
-            Creates a video with **visual markers** on detected problem frames:
-            - 🔴 **RED BORDER** = Problem frame detected
-            - 📝 **TEXT OVERLAY** = Shows issue type (freeze, duplicate, etc.)
-            - 🟡 **YELLOW CORNERS** = Visual emphasis
+            Creates a **3-panel comparison video**:
+            - 🟦 **TOP**: Original synchronized video
+            - 🟡 **MIDDLE**: Freeze detection with colored markers
+            - 🟢 **BOTTOM**: AI-repaired video using RIFE
             
-            Use this to verify detection accuracy before running interpolation!
+            Perfect for testing freeze detection accuracy and AI repair quality!
             """)
         
         with gr.Column():
