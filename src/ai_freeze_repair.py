@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import logging
 import torch
+import os
 from .timecode_freeze_predictor import predict_freezes_from_timecodes
 from .real_rife import RealRIFE
 
@@ -63,28 +64,47 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     logging.info(f"   FPS: {fps}")
     logging.info(f"   Video duration: {len(all_frames)/fps:.3f} seconds")
     
+    # Try different approaches to VideoWriter
+    
+    # First try: standard approach with temp file
+    import tempfile
+    temp_output_path = output_path.replace('.mp4', '_temp_raw.mp4')
+    
     # Try different codecs if mp4v fails
     codecs_to_try = ['mp4v', 'XVID', 'MJPG', 'X264']
     out = None
+    successful_codec = None
     
     for codec in codecs_to_try:
         logging.info(f"Trying codec: {codec}")
         fourcc = cv2.VideoWriter_fourcc(*codec) if len(codec) == 4 else cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
         
         if out.isOpened():
-            logging.info(f"✅ VideoWriter opened successfully with codec: {codec}")
-            break
+            # Test writing a dummy frame
+            test_frame = np.zeros((height, width, 3), dtype=np.uint8)
+            test_success = out.write(test_frame)
+            
+            if test_success:
+                logging.info(f"✅ VideoWriter opened successfully with codec: {codec}")
+                successful_codec = codec
+                break
+            else:
+                logging.warning(f"⚠️ Codec {codec} opened but can't write frames")
+                out.release()
+                out = None
         else:
             logging.warning(f"⚠️ Failed to open with codec: {codec}")
-            out.release()
+            if out:
+                out.release()
             out = None
     
     if out is None:
         logging.error("❌ VideoWriter failed to open with any codec!")
         raise Exception("VideoWriter initialization failed with all codecs")
         
-    logging.info(f"✅ Using VideoWriter with resolution: {width}x{height}, FPS: {fps}")
+    logging.info(f"✅ Using VideoWriter with codec: {successful_codec}, resolution: {width}x{height}, FPS: {fps}")
+    logging.info(f"✅ Output path: {temp_output_path}")
     
     repaired_count = 0
     written_frames = 0
@@ -134,10 +154,25 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             if frame_shape[:2] != (height, width):
                 logging.warning(f"⚠️ Frame {frame_idx} size mismatch: expected ({height},{width}), got {frame_shape[:2]}")
         
+        # Ensure frame is contiguous and in correct format
+        if not current_frame.flags['C_CONTIGUOUS']:
+            current_frame = np.ascontiguousarray(current_frame)
+        
+        # Ensure correct data type
+        if current_frame.dtype != np.uint8:
+            current_frame = current_frame.astype(np.uint8)
+            
         # Write frame with verification
         success = out.write(current_frame)
         if not success:
-            logging.warning(f"⚠️ Failed to write frame {frame_idx}! Shape: {current_frame.shape}, dtype: {current_frame.dtype}")
+            logging.warning(f"⚠️ Failed to write frame {frame_idx}! Shape: {current_frame.shape}, dtype: {current_frame.dtype}, contiguous: {current_frame.flags['C_CONTIGUOUS']}")
+            
+            # Try alternative write approach
+            try:
+                out.write(current_frame.copy())
+                logging.info(f"✅ Alternative write succeeded for frame {frame_idx}")
+            except Exception as e:
+                logging.error(f"❌ Alternative write also failed for frame {frame_idx}: {e}")
         written_frames += 1
         
         if frame_idx % 50 == 0:
@@ -156,10 +191,11 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     import time
     time.sleep(0.1)
     
-    # Check final frame counts
-    cap_check = cv2.VideoCapture(output_path)
+    # Check final frame counts (use temp path first)
+    check_path = temp_output_path if os.path.exists(temp_output_path) else output_path
+    cap_check = cv2.VideoCapture(check_path)
     if not cap_check.isOpened():
-        logging.error(f"❌ Cannot reopen output video: {output_path}")
+        logging.error(f"❌ Cannot reopen output video: {check_path}")
         return False
         
     output_frame_count = int(cap_check.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -191,6 +227,18 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
                 logging.warning(f"⚠️ FFmpeg remux failed: {result.stderr}")
         except Exception as e:
             logging.warning(f"⚠️ FFmpeg fix failed: {e}")
+    
+    # Move temp file to final location
+    if temp_output_path != output_path:
+        try:
+            import shutil
+            shutil.move(temp_output_path, output_path)
+            logging.info(f"✅ Moved temporary file to final location: {output_path}")
+        except Exception as e:
+            logging.warning(f"⚠️ Failed to move temp file: {e}")
+            if os.path.exists(temp_output_path):
+                output_path = temp_output_path
+                logging.info(f"Using temp file as final output: {output_path}")
     
     repair_pct = (repaired_count / len(frames_to_repair) * 100) if frames_to_repair else 0
     
