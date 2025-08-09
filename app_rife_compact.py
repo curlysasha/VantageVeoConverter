@@ -42,9 +42,8 @@ except ImportError as e:
 # Import our modules
 from src.comfy_rife import ComfyRIFE
 from src.timing_analyzer import analyze_timing_changes
-from src.video_processor import interpolate_video, regenerate_timecodes_for_interpolated_video
+from src.ai_freeze_repair import repair_freezes_with_rife
 from src.audio_sync import *
-from src.comparison import create_comparison_grid
 from src.diagnostic_visualizer import create_diagnostic_video
 from src.simple_diagnostic import create_simple_diagnostic
 from src.comparison_diagnostic import create_comparison_diagnostic
@@ -84,7 +83,7 @@ def check_dependencies():
     if missing:
         raise EnvironmentError(f"Missing dependencies: {', '.join(missing)}.")
 
-def synchronization_workflow(input_video_path, target_audio_path, rife_mode="off", progress=gr.Progress()):
+def synchronization_workflow(input_video_path, target_audio_path, use_rife=True, progress=gr.Progress()):
     """Main synchronization workflow with RIFE modes."""
     start_time = time.time()
     try:
@@ -144,26 +143,26 @@ def synchronization_workflow(input_video_path, target_audio_path, rife_mode="off
             timecodes_for_retiming = paths["timecodes"]
             interpolation_applied = False
             
-            if rife_mode != "off":
-                progress(0.75, desc=f"6/8: Analyzing for {rife_mode} interpolation...")
-                problem_segments = analyze_timing_changes(paths["timecodes"], rife_mode=rife_mode, video_path=input_video_path)
+            if use_rife:
+                progress(0.75, desc="6/8: Analyzing for adaptive RIFE interpolation...")
+                problem_segments = analyze_timing_changes(paths["timecodes"], rife_mode="adaptive", video_path=input_video_path)
                 
-                if problem_segments or rife_mode == "maximum":
-                    progress(0.8, desc=f"6/8: Applying {rife_mode} interpolation...")
-                    interpolation_applied = interpolate_video(
-                        input_video_path, problem_segments, paths["interpolated_video"], rife_mode, RIFE_MODEL
+                if problem_segments:
+                    progress(0.8, desc="6/8: Applying adaptive RIFE interpolation...")
+                    # Convert problem_segments to freeze_predictions format
+                    freeze_predictions = []
+                    for segment in problem_segments:
+                        segment_predictions = []
+                        for frame_idx in range(segment['start_frame'], segment['end_frame']):
+                            segment_predictions.append({'frame': frame_idx, 'reason': 'adaptive'})
+                        freeze_predictions.append({'predictions': segment_predictions})
+                    
+                    # Use new RIFE repair system
+                    interpolation_applied = repair_freezes_with_rife(
+                        input_video_path, freeze_predictions, paths["interpolated_video"], RIFE_MODEL
                     )
                     if interpolation_applied:
                         video_for_retiming = paths["interpolated_video"]
-                        # Пересчитываем timecodes для интерполированного видео
-                        progress(0.85, desc="6/8: Recalculating timecodes...")
-                        regenerate_timecodes_for_interpolated_video(
-                            input_video_path, 
-                            paths["interpolated_video"],
-                            paths["timecodes"],
-                            paths["interpolated_timecodes"]
-                        )
-                        timecodes_for_retiming = paths["interpolated_timecodes"]
             else:
                 progress(0.8, desc="6/8: Skipping interpolation...")
             
@@ -186,11 +185,11 @@ def synchronization_workflow(input_video_path, target_audio_path, rife_mode="off
             rife_info = f"RIFE Engine: REAL RIFE" if RIFE_MODEL.available else "RIFE: Not available"
             
             mode_note = ""
-            if rife_mode != "off":
+            if use_rife:
                 if interpolation_applied:
-                    mode_note = f" (with {rife_mode} REAL RIFE interpolation)"
+                    mode_note = " (with adaptive REAL RIFE interpolation)"
                 else:
-                    mode_note = f" ({rife_mode} mode - no interpolation needed)"
+                    mode_note = " (RIFE enabled - no interpolation needed)"
             
             status_msg = f"""Synchronization successful{mode_note}! 
 Processing time: {duration:.2f} seconds
@@ -212,7 +211,7 @@ Smoothing: Enabled (cubic spline + filter)
                 pass
         raise gr.Error(f"Processing failed: {e}")
 
-def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive", progress=gr.Progress()):
+def diagnostic_workflow(input_video_path, target_audio_path, use_rife=True, progress=gr.Progress()):
     """Diagnostic workflow - visualize problem frames without interpolation."""
     start_time = time.time()
     
@@ -341,138 +340,6 @@ Watch the bottom panel to see RIFE-repaired smooth video!"""
                 pass
         raise gr.Error(f"Diagnostic failed: {e}")
 
-def comparison_workflow(input_video_path, target_audio_path, progress=gr.Progress()):
-    """Workflow для сравнения всех режимов."""
-    start_time = time.time()
-    
-    try:
-        check_dependencies()
-        
-        # Создаем выходные файлы
-        output_files = {}
-        for mode in ['original', 'adaptive', 'precision', 'maximum']:
-            fd, path = tempfile.mkstemp(suffix=f"_{mode}.mp4", prefix="comparison_")
-            os.close(fd)
-            output_files[mode] = path
-        
-        # Финальный диптих
-        grid_fd, grid_path = tempfile.mkstemp(suffix="_comparison_grid.mp4", prefix="final_")
-        os.close(grid_fd)
-        
-        modes_to_process = [
-            ('original', 'off'),
-            ('adaptive', 'adaptive'), 
-            ('precision', 'precision'),
-            ('maximum', 'maximum')
-        ]
-        
-        results = {}
-        
-        for i, (mode_name, rife_mode) in enumerate(modes_to_process):
-            progress_start = i * 0.2
-            progress_end = (i + 1) * 0.2
-            
-            progress(progress_start, desc=f"Processing {mode_name.upper()} mode...")
-            
-            # Используем существующий workflow для каждого режима
-            def mode_progress(value, desc=""):
-                actual_progress = progress_start + (value * (progress_end - progress_start))
-                progress(actual_progress, desc=f"{mode_name.upper()}: {desc}")
-            
-            try:
-                result_path, status = synchronization_workflow(
-                    input_video_path, target_audio_path, rife_mode, mode_progress
-                )
-                
-                # Копируем результат
-                shutil.copy2(result_path, output_files[mode_name])
-                results[mode_name] = {
-                    'path': output_files[mode_name],
-                    'status': status
-                }
-                
-                # Очищаем временный файл
-                try:
-                    os.unlink(result_path)
-                except:
-                    pass
-                    
-                logging.info(f"Completed {mode_name} mode")
-                
-            except Exception as e:
-                logging.error(f"Failed {mode_name} mode: {e}")
-                results[mode_name] = {'path': None, 'status': f"Failed: {e}"}
-        
-        # Создаем диптих если все режимы успешны
-        progress(0.85, desc="Creating comparison grid...")
-        
-        if all(r['path'] for r in results.values()):
-            grid_success = create_comparison_grid(
-                results['original']['path'],
-                results['adaptive']['path'], 
-                results['precision']['path'],
-                results['maximum']['path'],
-                grid_path
-            )
-            
-            if grid_success:
-                progress(0.95, desc="Finalizing comparison...")
-                
-                duration = time.time() - start_time
-                
-                # Создаем подробный отчет
-                status_report = f"""🎬 COMPARISON COMPLETE! Processed in {duration:.1f} seconds.
-
-📊 ALL MODES COMPARISON:
-• ORIGINAL (VFR Only): Basic synchronization
-• ADAPTIVE RIFE: Smart interpolation where needed  
-• PRECISION RIFE: Surgical interpolation at VFR points
-• MAXIMUM RIFE: Full video interpolation
-
-🎯 Grid Layout (2x2):
-┌─────────────┬─────────────┐
-│  ORIGINAL   │  ADAPTIVE   │
-├─────────────┼─────────────┤  
-│ PRECISION   │  MAXIMUM    │
-└─────────────┴─────────────┘
-
-⏱️ Processing times and details logged above.
-Watch the grid to see smoothness differences!"""
-
-                # Очищаем индивидуальные файлы
-                for mode_result in results.values():
-                    if mode_result['path']:
-                        try:
-                            os.unlink(mode_result['path'])
-                        except:
-                            pass
-                
-                return grid_path, status_report
-            else:
-                raise Exception("Failed to create comparison grid")
-        else:
-            failed_modes = [mode for mode, result in results.items() if not result['path']]
-            raise Exception(f"Failed modes: {', '.join(failed_modes)}")
-            
-    except Exception as e:
-        logging.error(f"Comparison workflow failed: {e}", exc_info=True)
-        
-        # Очистка в случае ошибки
-        if 'results' in locals():
-            for mode_result in results.values():
-                if mode_result.get('path') and os.path.exists(mode_result['path']):
-                    try:
-                        os.unlink(mode_result['path'])
-                    except:
-                        pass
-        
-        if 'grid_path' in locals() and os.path.exists(grid_path):
-            try:
-                os.unlink(grid_path)
-            except:
-                pass
-                
-        raise gr.Error(f"Comparison failed: {e}")
 
 # Initialize models
 initialize_models()
@@ -503,16 +370,11 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
             video_input = gr.Video(label="Source Video")
             audio_input = gr.Audio(label="Target Audio", type="filepath")
             
-            gr.Markdown("### Single Mode Processing")
-            rife_mode = gr.Radio(
-                choices=[
-                    ("Off", "off"),
-                    ("Adaptive", "adaptive"), 
-                    ("Precision", "precision"),
-                    ("Maximum", "maximum")
-                ],
-                value="off",
-                label="RIFE Interpolation Mode"
+            gr.Markdown("### Video Processing")
+            use_rife = gr.Checkbox(
+                label="Use RIFE AI Interpolation", 
+                value=True,
+                info="Enable AI-based frame interpolation to repair video freezes"
             )
             
             submit_button = gr.Button("Start Synchronization", variant="primary")
@@ -524,11 +386,6 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
             
             diagnostic_button = gr.Button("🤖 Run AI Diagnostic (Detection + Repair)", variant="secondary")
             
-            gr.Markdown("---")
-            gr.Markdown("### Compare All Modes")
-            gr.Markdown("Process video with all 4 modes and create side-by-side comparison")
-            
-            compare_button = gr.Button("🎬 Compare All Modes (Off/Adaptive/Precision/Maximum)", variant="secondary", size="lg")
         
         with gr.Column():
             video_output = gr.Video(label="Synchronized Video / Comparison Grid")
@@ -603,19 +460,13 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
     # Connect buttons to functions
     submit_button.click(
         fn=synchronization_workflow,
-        inputs=[video_input, audio_input, rife_mode],
+        inputs=[video_input, audio_input, use_rife],
         outputs=[video_output, text_output]
     )
     
     diagnostic_button.click(
         fn=diagnostic_workflow,
-        inputs=[video_input, audio_input, rife_mode],
-        outputs=[video_output, text_output]
-    )
-    
-    compare_button.click(
-        fn=comparison_workflow,
-        inputs=[video_input, audio_input],
+        inputs=[video_input, audio_input, use_rife],
         outputs=[video_output, text_output]
     )
 

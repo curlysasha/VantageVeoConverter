@@ -5,8 +5,8 @@ import logging
 import numpy as np
 import cv2
 
-def analyze_timing_changes(timecode_path, fps=25, rife_mode="off", video_path=None):
-    """Analyze timing changes and detect duplicate/missing frames based on mode."""
+def analyze_timing_changes(timecode_path, fps=25, rife_mode="adaptive", video_path=None):
+    """Analyze timing changes and detect duplicate/missing frames using adaptive mode."""
     with open(timecode_path, 'r') as f:
         lines = [line.strip() for line in f.readlines() if not line.startswith('#')]
     
@@ -16,27 +16,17 @@ def analyze_timing_changes(timecode_path, fps=25, rife_mode="off", video_path=No
     
     if rife_mode == "off":
         return []
-    elif rife_mode == "maximum":
-        logging.info("Maximum mode: will interpolate entire video")
-        return [{'start_frame': 0, 'end_frame': len(timestamps), 'reason': 'maximum', 'type': 'full_video'}]
     elif rife_mode == "diagnostic":
         logging.info("Diagnostic mode: using ultra-sensitive detection")
-        # Continue with diagnostic detection below
+        threshold = 0.10  # 10% deviation - balanced for diagnostic
+        merge_distance = 1   # Small merge distance - don't group everything together!
+    else:  # adaptive (default and only supported mode)
+        threshold = 0.15  # 15% deviation - moderate sensitivity
+        merge_distance = 5  # Larger merge distance for adaptive
     
     # Analyze frame duplication and timing irregularities
     original_interval = 1000 / fps  # Expected interval in ms
     problem_segments = []
-    
-    # Different sensitivity thresholds
-    if rife_mode == "diagnostic":
-        threshold = 0.10  # 10% deviation - balanced for diagnostic
-        merge_distance = 1   # Small merge distance - don't group everything together!
-    elif rife_mode == "precision":
-        threshold = 0.05  # 5% deviation - very sensitive
-        merge_distance = 2  # Smaller merge distance for precision
-    else:  # adaptive
-        threshold = 0.15  # 15% deviation - moderate sensitivity
-        merge_distance = 5  # Larger merge distance for adaptive
     
     # Detect different types of timing issues
     duplicate_frames = []  # Frames with identical or too-close timestamps
@@ -180,7 +170,7 @@ def detect_duplicate_frames(frames, similarity_threshold=0.01):
 
 def detect_visual_duplicates_from_video(video_path, mode="adaptive"):
     """
-    Advanced visual duplicate detection using multiple comparison methods.
+    Advanced visual duplicate detection using adaptive mode.
     Detects frozen/stuck frames even with slight variations.
     """
     cap = cv2.VideoCapture(video_path)
@@ -192,11 +182,7 @@ def detect_visual_duplicates_from_video(video_path, mode="adaptive"):
         pixel_threshold = 0.03      # 3% pixel difference max - balanced
         structural_threshold = 0.97 # 97% structural similarity min - reasonable
         check_distance = 3          # Check 3 frames back - focused
-    elif mode == "precision":
-        pixel_threshold = 0.02      # 2% pixel difference max
-        structural_threshold = 0.98 # 98% structural similarity min
-        check_distance = 2
-    else:  # adaptive
+    else:  # adaptive (default and only supported mode)
         pixel_threshold = 0.05      # 5% pixel difference max  
         structural_threshold = 0.95 # 95% structural similarity min
         check_distance = 5
