@@ -63,9 +63,15 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     logging.info(f"   FPS: {fps}")
     logging.info(f"   Video duration: {len(all_frames)/fps:.3f} seconds")
     
-    # Create output video
+    # Create output video with better codec and explicit flush
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    if not out.isOpened():
+        logging.error("❌ VideoWriter failed to open!")
+        raise Exception("VideoWriter initialization failed")
+    
+    logging.info(f"✅ VideoWriter opened successfully:")
     
     repaired_count = 0
     written_frames = 0
@@ -106,24 +112,63 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             else:
                 logging.warning(f"   ❌ Frame {frame_idx} not found in sequences - skipping repair")
         
-        out.write(current_frame)
+        # Write frame with verification
+        success = out.write(current_frame)
+        if not success:
+            logging.warning(f"⚠️ Failed to write frame {frame_idx}!")
         written_frames += 1
         
         if frame_idx % 50 == 0:
             logging.info(f"   Progress: {frame_idx+1}/{len(all_frames)} frames processed, {written_frames} written, {repaired_count} repaired")
     
+    # Force flush and release
     out.release()
+    del out  # Explicit cleanup
     
     logging.info(f"🔧 Frame processing loop completed:")
     logging.info(f"   Total frames processed: {len(all_frames)}")
     logging.info(f"   Total frames written: {written_frames}")
     logging.info(f"   Should match: {len(all_frames) == written_frames}")
     
+    # Wait a moment for file system to flush
+    import time
+    time.sleep(0.1)
+    
     # Check final frame counts
     cap_check = cv2.VideoCapture(output_path)
+    if not cap_check.isOpened():
+        logging.error(f"❌ Cannot reopen output video: {output_path}")
+        return False
+        
     output_frame_count = int(cap_check.get(cv2.CAP_PROP_FRAME_COUNT))
     output_fps = cap_check.get(cv2.CAP_PROP_FPS)
     cap_check.release()
+    
+    # If frame count mismatch, try to fix with FFmpeg remux
+    if abs(len(all_frames) - output_frame_count) > 0:
+        logging.warning(f"⚠️ Frame count mismatch detected, attempting FFmpeg fix...")
+        temp_path = output_path.replace('.mp4', '_temp_remux.mp4')
+        
+        try:
+            import subprocess
+            # Remux without re-encoding to preserve all frames
+            cmd = ['ffmpeg', '-y', '-i', output_path, '-c', 'copy', '-avoid_negative_ts', 'make_zero', temp_path]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            
+            if result.returncode == 0:
+                import shutil
+                shutil.move(temp_path, output_path)
+                logging.info("✅ FFmpeg remux completed")
+                
+                # Recheck frame count
+                cap_check = cv2.VideoCapture(output_path)
+                output_frame_count = int(cap_check.get(cv2.CAP_PROP_FRAME_COUNT))
+                output_fps = cap_check.get(cv2.CAP_PROP_FPS)
+                cap_check.release()
+            else:
+                logging.warning(f"⚠️ FFmpeg remux failed: {result.stderr}")
+        except Exception as e:
+            logging.warning(f"⚠️ FFmpeg fix failed: {e}")
     
     repair_pct = (repaired_count / len(frames_to_repair) * 100) if frames_to_repair else 0
     
