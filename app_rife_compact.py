@@ -202,23 +202,24 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
                 "align_source": os.path.join(temp_dir, "align_source.json"),
                 "align_target": os.path.join(temp_dir, "align_target.json"),
                 "timecodes": os.path.join(temp_dir, "timecodes_v2.txt"),
+                "retimed_video": os.path.join(temp_dir, "retimed_diagnostic.mp4"),
             }
             
             # Standard pipeline for timecode generation
-            progress(0.1, desc="1/6: Extracting audio...")
+            progress(0.1, desc="1/7: Extracting audio...")
             extract_and_standardize_audio(input_video_path, paths["source_audio"])
             extract_and_standardize_audio(target_audio_path, paths["target_audio_processed"])
             
-            progress(0.2, desc=f"2/6: Transcribing (Whisper on {DEVICE})...")
+            progress(0.2, desc=f"2/7: Transcribing (Whisper on {DEVICE})...")
             transcript_text = transcribe_audio(paths["target_audio_processed"], paths["transcript"], WHISPER_MODEL)
             
-            progress(0.35, desc="3/6: Aligning Source...")
+            progress(0.35, desc="3/7: Aligning Source...")
             forced_alignment(paths["source_audio"], paths["transcript"], paths["align_source"])
             
-            progress(0.5, desc="4/6: Aligning Target...")
+            progress(0.5, desc="4/7: Aligning Target...")
             forced_alignment(paths["target_audio_processed"], paths["transcript"], paths["align_target"])
             
-            progress(0.65, desc="5/6: Calculating timecodes...")
+            progress(0.65, desc="5/7: Calculating timecodes...")
             generate_vfr_timecodes(
                 input_video_path, 
                 paths["align_source"], 
@@ -227,13 +228,18 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
                 smooth_interpolation=True
             )
             
-            # Create diagnostic video - always use diagnostic mode for ultra-sensitive detection
-            progress(0.8, desc="6/6: Creating diagnostic visualization (ultra-sensitive mode)...")
+            # Apply timecodes to create retimed video FIRST
+            progress(0.75, desc="6/7: Creating retimed video (this is where freezes appear)...")
+            retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
+            
+            # Create diagnostic video - analyze the RETIMED video for problems!
+            progress(0.85, desc="7/7: Analyzing RETIMED video for freezes...")
             marked_frames, report = create_diagnostic_video(
                 input_video_path,
                 diag_output_path,
                 paths["timecodes"],
-                rife_mode="diagnostic"  # Always use diagnostic mode for visualization
+                rife_mode="diagnostic",  # Always use diagnostic mode for visualization
+                retimed_video_path=paths["retimed_video"]  # Pass the retimed video!
             )
             
             duration = time.time() - start_time

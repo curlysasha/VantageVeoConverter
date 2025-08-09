@@ -29,8 +29,8 @@ def analyze_timing_changes(timecode_path, fps=25, rife_mode="off", video_path=No
     
     # Different sensitivity thresholds
     if rife_mode == "diagnostic":
-        threshold = 0.01  # 1% deviation - ULTRA sensitive for diagnostic
-        merge_distance = 10  # Large merge distance to catch all related issues
+        threshold = 0.10  # 10% deviation - balanced for diagnostic
+        merge_distance = 3   # Moderate merge distance
     elif rife_mode == "precision":
         threshold = 0.05  # 5% deviation - very sensitive
         merge_distance = 2  # Smaller merge distance for precision
@@ -188,10 +188,10 @@ def detect_visual_duplicates_from_video(video_path, mode="adaptive"):
     
     # Adaptive thresholds based on mode
     if mode == "diagnostic":
-        # Ultra-sensitive mode for diagnostic visualization
-        pixel_threshold = 0.10      # 10% pixel difference max - very lenient
-        structural_threshold = 0.90 # 90% structural similarity min - catches more
-        check_distance = 10         # Check up to 10 frames back
+        # Balanced diagnostic mode - sensitive but not excessive
+        pixel_threshold = 0.03      # 3% pixel difference max - balanced
+        structural_threshold = 0.97 # 97% structural similarity min - reasonable
+        check_distance = 3          # Check 3 frames back - focused
     elif mode == "precision":
         pixel_threshold = 0.02      # 2% pixel difference max
         structural_threshold = 0.98 # 98% structural similarity min
@@ -258,7 +258,11 @@ def detect_visual_duplicates_from_video(video_path, mode="adaptive"):
                 std_diff = abs(current_frame_data['std'] - ref_frame_data['std'])
                 
                 # If stats are very different, skip detailed comparison
-                if mean_diff > 10 or std_diff > 15:
+                # More lenient thresholds for diagnostic mode
+                mean_threshold = 5 if mode == "diagnostic" else 10
+                std_threshold = 10 if mode == "diagnostic" else 15
+                
+                if mean_diff > mean_threshold or std_diff > std_threshold:
                     continue
                 
                 # Detailed pixel comparison
@@ -272,7 +276,14 @@ def detect_visual_duplicates_from_video(video_path, mode="adaptive"):
                 diff = cv2.absdiff(current_frame, ref_frame)
                 pixel_diff_ratio = np.mean(diff) / 255.0
                 
-                if pixel_diff_ratio < pixel_threshold:
+                # For diagnostic mode, also check if there's actual motion (not just noise)
+                if mode == "diagnostic":
+                    # Only mark as freeze if VERY similar (less than 1% difference)
+                    freeze_threshold = 0.01  # 1% difference for true freeze
+                else:
+                    freeze_threshold = pixel_threshold
+                
+                if pixel_diff_ratio < freeze_threshold:
                     freeze_detected = True
                     method = "pixel_diff"
                     score = 1.0 - pixel_diff_ratio
@@ -307,6 +318,12 @@ def detect_visual_duplicates_from_video(video_path, mode="adaptive"):
                         'method': method,
                         'distance': distance
                     })
+                    
+                    # Log detailed info for first few detections in diagnostic mode
+                    if mode == "diagnostic" and len(visual_duplicates) <= 5:
+                        logging.info(f"      Freeze detected: frame {frame_idx} → {ref_frame_data['index']}, "
+                                   f"method={method}, pixel_diff={pixel_diff_ratio:.3f}, score={score:.3f}")
+                    
                     break  # Found freeze, stop checking this frame
         
         frame_idx += 1
