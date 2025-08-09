@@ -4,14 +4,16 @@ Create side-by-side comparison of synchronized video with and without diagnostic
 import cv2
 import numpy as np
 import logging
+import subprocess
+import os
 
 def create_comparison_diagnostic(synchronized_video_path, output_path):
     """
-    Create top-bottom comparison:
+    Create top-bottom comparison with audio:
     Top: original synchronized video
     Bottom: same video with red markers on frozen frames
     """
-    logging.info("🔍 Creating top-bottom diagnostic comparison...")
+    logging.info("🔍 Creating top-bottom diagnostic comparison with audio...")
     
     # Open video
     cap = cv2.VideoCapture(synchronized_video_path)
@@ -20,10 +22,13 @@ def create_comparison_diagnostic(synchronized_video_path, output_path):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
+    # Create temporary video file without audio first
+    temp_video_path = output_path.replace('.mp4', '_temp_no_audio.mp4')
+    
     # Create output video - twice as tall for top-bottom
     new_height = height * 2
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, new_height))
+    out = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, new_height))
     
     prev_frame = None
     frame_idx = 0
@@ -95,6 +100,42 @@ def create_comparison_diagnostic(synchronized_video_path, output_path):
     cap.release()
     out.release()
     
+    # Add audio from original synchronized video using ffmpeg
+    logging.info("🔊 Adding audio track to diagnostic video...")
+    try:
+        cmd = [
+            'ffmpeg', '-y',  # Overwrite output file
+            '-i', temp_video_path,  # Video input
+            '-i', synchronized_video_path,  # Audio source
+            '-c:v', 'copy',  # Copy video stream as-is
+            '-c:a', 'aac',  # Use AAC audio codec
+            '-map', '0:v:0',  # Take video from first input
+            '-map', '1:a:0',  # Take audio from second input
+            '-shortest',  # End when shortest stream ends
+            output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode == 0:
+            logging.info("✅ Audio added successfully")
+            # Clean up temporary file
+            if os.path.exists(temp_video_path):
+                os.remove(temp_video_path)
+        else:
+            logging.warning(f"⚠️ Audio addition failed: {result.stderr}")
+            logging.info("📝 Using video-only diagnostic file")
+            # Rename temp file to final output if ffmpeg failed
+            if os.path.exists(temp_video_path):
+                os.rename(temp_video_path, output_path)
+                
+    except Exception as e:
+        logging.warning(f"⚠️ Audio processing error: {e}")
+        logging.info("📝 Using video-only diagnostic file")
+        # Rename temp file to final output if audio processing failed
+        if os.path.exists(temp_video_path):
+            os.rename(temp_video_path, output_path)
+    
     freeze_pct = (freeze_count / total_frames * 100) if total_frames > 0 else 0
     
     # Show some example freeze frames
@@ -103,7 +144,7 @@ def create_comparison_diagnostic(synchronized_video_path, output_path):
     if len(freeze_frames) > 10:
         examples_str += f" ... (and {len(freeze_frames) - 10} more)"
 
-    report = f"""🔍 TOP-BOTTOM DIAGNOSTIC COMPARISON
+    report = f"""🔍 TOP-BOTTOM DIAGNOSTIC COMPARISON WITH AUDIO
 
 📊 Analysis Results:
 • Total frames: {total_frames}
@@ -122,8 +163,10 @@ def create_comparison_diagnostic(synchronized_video_path, output_path):
 
 🔴 Red frames on bottom = detected freezes
 ⚪ White line = separator between original and diagnostic
+🔊 Audio track = synchronized from original video
 
 This shows exactly where timing corrections created frozen frames!
+You can hear if audio remains smooth during visual freezes.
 """
     
     logging.info(f"✅ Side-by-side diagnostic created: {freeze_count} freezes marked ({freeze_pct:.1f}%)")
