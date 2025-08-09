@@ -6,7 +6,7 @@ import numpy as np
 import logging
 import torch
 from .timecode_freeze_predictor import predict_freezes_from_timecodes
-from .optical_flow_rife import OpticalFlowRIFE
+from .real_rife import RealRIFE
 
 def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_model):
     """
@@ -21,9 +21,9 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
         shutil.copy2(video_path, output_path)
         return True
     
-    # Initialize Optical Flow RIFE once for all frames
-    optical_flow_rife = OpticalFlowRIFE()
-    logging.info(f"Optical Flow RIFE available: {optical_flow_rife.available}")
+    # Initialize REAL RIFE once for all frames
+    real_rife = RealRIFE()
+    logging.info(f"REAL RIFE available: {real_rife.available}")
     
     # Create set of frames that need repair
     frames_to_repair = set()
@@ -70,9 +70,9 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             
             if prev_frame is not None and next_frame is not None:
                 logging.info(f"   Repairing frame {frame_idx}, neighbors found")
-                # Use Optical Flow RIFE to interpolate
+                # Use REAL RIFE to interpolate
                 try:
-                    interpolated = interpolate_with_optical_flow_rife(prev_frame, next_frame, optical_flow_rife)
+                    interpolated = interpolate_with_real_rife(prev_frame, next_frame, real_rife)
                     if interpolated is not None:
                         current_frame = interpolated
                         repaired_count += 1
@@ -125,32 +125,32 @@ def find_neighbor_frames(all_frames, target_idx, frozen_frames):
     
     return prev_frame, next_frame
 
-def interpolate_with_optical_flow_rife(prev_frame, next_frame, optical_flow_rife):
+def interpolate_with_real_rife(prev_frame, next_frame, real_rife):
     """
-    Интерполировать один кадр между двумя используя НАСТОЯЩИЙ optical flow без блендинга.
+    Интерполировать один кадр между двумя используя НАСТОЯЩИЙ RIFE из оригинального репозитория.
     """
     try:
-        # Use Optical Flow RIFE - NEVER BLENDS, always warps based on motion
-        if optical_flow_rife and optical_flow_rife.available:
+        # Use REAL RIFE from official ECCV2022-RIFE repository
+        if real_rife and real_rife.available:
             try:
-                interpolated_frames = optical_flow_rife.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
+                interpolated_frames = real_rife.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
                 if interpolated_frames and len(interpolated_frames) > 0:
-                    logging.info("     ✅ Optical Flow RIFE interpolation successful (NO BLENDING)")
+                    logging.info("     ✅ REAL RIFE interpolation successful")
                     return interpolated_frames[0]
                 else:
-                    logging.warning("     Optical Flow RIFE returned empty result")
+                    logging.warning("     REAL RIFE returned empty result")
             except Exception as rife_error:
-                logging.warning(f"     Optical Flow RIFE failed: {rife_error}")
+                logging.warning(f"     REAL RIFE failed: {rife_error}")
         
-        # Fallback to improved optical flow interpolation (still no blending)
-        logging.info("     Using manual optical flow fallback (still no blending)")
+        # Fallback to improved optical flow interpolation
+        logging.info("     REAL RIFE not available, using optical flow fallback")
         return improved_optical_flow_interpolation(prev_frame, next_frame)
         
     except Exception as e:
-        logging.error(f"     All motion-based interpolation methods failed: {e}")
-        # LAST RESORT: Return slightly modified frame instead of blending
-        logging.warning("     Using frame modification instead of blending")
-        return slightly_modify_frame(prev_frame)
+        logging.error(f"     All interpolation methods failed: {e}")
+        # Last resort - return original frame
+        logging.warning("     Using original frame")
+        return prev_frame
 
 def improved_optical_flow_interpolation(frame1, frame2):
     """

@@ -8,37 +8,37 @@ import cv2
 import numpy as np
 import subprocess
 import sys
-from .optical_flow_rife import OpticalFlowRIFE
+from .real_rife import RealRIFE as RealRIFEModel
 
 class RealRIFE:
-    """Real RIFE AI model for frame interpolation - Optical Flow implementation."""
+    """Real RIFE AI model for frame interpolation - Official ECCV2022 implementation."""
     
     def __init__(self, device="cuda"):
         self.device = device if torch.cuda.is_available() else "cpu"
         self.available = False
-        self.method = "optical_flow_rife"
-        self.optical_flow_rife = None
+        self.method = "real_rife"
+        self.real_rife_model = None
         self._setup_rife()
     
     def _setup_rife(self):
-        """Setup Optical Flow RIFE AI model."""
+        """Setup REAL RIFE AI model from official repository."""
         try:
-            logging.info("🤖 Setting up Optical Flow RIFE AI model...")
+            logging.info("🤖 Setting up REAL RIFE from official ECCV2022 repository...")
             
-            # Initialize Optical Flow RIFE
-            self.optical_flow_rife = OpticalFlowRIFE(self.device)
+            # Initialize REAL RIFE
+            self.real_rife_model = RealRIFEModel(self.device)
             
-            if self.optical_flow_rife.available:
-                self.method = "optical_flow_rife"
+            if self.real_rife_model.available:
+                self.method = "real_rife"
                 self.available = True
-                logging.info("✅ Optical Flow RIFE ready! (NO BLENDING)")
+                logging.info("✅ REAL RIFE ready from official repository!")
             else:
                 self.method = "enhanced_cv" 
                 self.available = False
-                logging.info("⚠️ Optical Flow RIFE failed, using enhanced fallback")
+                logging.info("⚠️ REAL RIFE failed, using enhanced fallback")
                 
         except Exception as e:
-            logging.error(f"❌ Optical Flow RIFE setup failed: {e}")
+            logging.error(f"❌ REAL RIFE setup failed: {e}")
             self.method = "simple"
             self.available = False
             
@@ -60,18 +60,18 @@ class RealRIFE:
     # Old setup function removed - using PyTorch RIFE now
     
     def interpolate_frames(self, frame1, frame2, num_intermediate=1):
-        """Real Optical Flow RIFE interpolation - NO BLENDING."""
+        """REAL RIFE interpolation from official repository."""
         try:
-            # Use Optical Flow RIFE if available
-            if self.method == "optical_flow_rife" and self.optical_flow_rife and self.optical_flow_rife.available:
-                return self.optical_flow_rife.interpolate_frames(frame1, frame2, num_intermediate)
+            # Use REAL RIFE if available
+            if self.method == "real_rife" and self.real_rife_model and self.real_rife_model.available:
+                return self.real_rife_model.interpolate_frames(frame1, frame2, num_intermediate)
             elif self.method == "enhanced_cv":
                 return self._enhanced_interpolation(frame1, frame2, num_intermediate)
             else:
                 return self._simple_interpolation(frame1, frame2, num_intermediate)
             
         except Exception as e:
-            logging.warning(f"Optical Flow RIFE interpolation failed, using fallback: {e}")
+            logging.warning(f"REAL RIFE interpolation failed, using fallback: {e}")
             return self._simple_interpolation(frame1, frame2, num_intermediate)
     
     # Old RIFE functions removed - using PyTorch RIFE now
