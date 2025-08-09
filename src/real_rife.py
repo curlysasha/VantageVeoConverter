@@ -146,10 +146,16 @@ class RealRIFE:
         # BGR to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
+        # Store original dimensions for later cropping
+        self.orig_h, self.orig_w = frame_rgb.shape[:2]
+        
         # RIFE requires dimensions divisible by 64
         h, w = frame_rgb.shape[:2]
         pad_h = ((h + 63) // 64) * 64 - h
         pad_w = ((w + 63) // 64) * 64 - w
+        
+        # Store padding for later removal
+        self.pad_h, self.pad_w = pad_h, pad_w
         
         # Pad frame if necessary
         if pad_h > 0 or pad_w > 0:
@@ -164,10 +170,19 @@ class RealRIFE:
         return tensor.to(self.device)
     
     def _tensor_to_frame(self, tensor):
-        """Convert RGB tensor to BGR frame."""
+        """Convert RGB tensor to BGR frame and remove padding."""
         # Move to CPU and convert back to frame
         tensor = tensor.squeeze(0).cpu().permute(1, 2, 0)  # BCHW -> CHW -> HWC
         frame_rgb = (tensor.clamp(0, 1) * 255).byte().numpy()
+        
+        # Remove padding to restore original size
+        if hasattr(self, 'pad_h') and hasattr(self, 'pad_w'):
+            if self.pad_h > 0 or self.pad_w > 0:
+                # Crop back to original size
+                h_end = self.orig_h
+                w_end = self.orig_w
+                frame_rgb = frame_rgb[:h_end, :w_end]
+        
         frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
         
         return frame_bgr
