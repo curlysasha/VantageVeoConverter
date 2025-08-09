@@ -183,12 +183,12 @@ def synchronization_workflow(input_video_path, target_audio_path, rife_mode="off
             fps, is_vfr = detect_vfr_and_get_fps(input_video_path, video_info)
             
             # Enhanced status message with RIFE info
-            rife_info = f"RIFE Engine: {RIFE_MODEL.method.upper()}" if RIFE_MODEL.available else "RIFE: Simple fallback"
+            rife_info = f"RIFE Engine: REAL RIFE" if RIFE_MODEL.available else "RIFE: Not available"
             
             mode_note = ""
             if rife_mode != "off":
                 if interpolation_applied:
-                    mode_note = f" (with {rife_mode} {RIFE_MODEL.method.upper()} interpolation)"
+                    mode_note = f" (with {rife_mode} REAL RIFE interpolation)"
                 else:
                     mode_note = f" ({rife_mode} mode - no interpolation needed)"
             
@@ -444,7 +444,7 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
     - **Progress Tracking**: Real-time processing updates
     - **Smart Analysis**: Intelligent problem area detection
     
-    **🤖 RIFE Status**: {RIFE_MODEL.method.upper()} - {'✅ AI Ready' if RIFE_MODEL.available else '🚀 Installing on demand'}
+    **🤖 RIFE Status**: REAL RIFE - {'✅ AI Ready' if RIFE_MODEL.available else '🚀 Installing on demand'}
     **🚀 GPU**: {'✅ CUDA Available - ' + (torch.cuda.get_device_name(0) if torch.cuda.is_available() else '') if torch.cuda.is_available() else '⚠️ CPU Only'}
     **💾 VRAM**: {torch.cuda.get_device_properties(0).total_memory // 1024**3 if torch.cuda.is_available() else 0} GB
     
@@ -501,7 +501,7 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
             **🎯 Adaptive**: Smart AI interpolation (15-30s)
             - Real RIFE AI analysis of timing issues
             - Interpolates only problem areas
-            - Engine: {RIFE_MODEL.method.upper() if RIFE_MODEL.available else 'Auto-install'}
+            - Engine: {'REAL RIFE' if RIFE_MODEL.available else 'Auto-install'}
             """)
     
     with gr.Row():
@@ -510,7 +510,7 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
             **🔧 Precision**: Surgical RIFE (10-25s)
             - Real RIFE AI at exact VFR points
             - Minimal but precise interpolation
-            - Engine: {RIFE_MODEL.method.upper() if RIFE_MODEL.available else 'Auto-install'}
+            - Engine: {'REAL RIFE' if RIFE_MODEL.available else 'Auto-install'}
             """)
         
         with gr.Column():
@@ -518,7 +518,7 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
             **💎 Maximum**: Full RIFE AI (60-120s)
             - Real RIFE AI on entire video
             - Maximum smoothness possible
-            - Engine: {RIFE_MODEL.method.upper() if RIFE_MODEL.available else 'Auto-install'}
+            - Engine: {'REAL RIFE' if RIFE_MODEL.available else 'Auto-install'}
             """)
     
     with gr.Row():
@@ -581,7 +581,7 @@ if __name__ == '__main__':
             gpu_name = torch.cuda.get_device_name(0)
             gpu_memory = torch.cuda.get_device_properties(0).total_memory // 1024**3
             print(f"🚀 GPU Detected: {gpu_name} ({gpu_memory} GB VRAM)")
-            print(f"🔥 RIFE Method: {RIFE_MODEL.method.upper()}")
+            print(f"🔥 RIFE Method: REAL RIFE")
             print("⚡ Ready for GPU-accelerated interpolation!")
         except Exception as e:
             print(f"GPU info error: {e}")
