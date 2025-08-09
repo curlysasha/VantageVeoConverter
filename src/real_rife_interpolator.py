@@ -136,22 +136,29 @@ class RealRIFEInterpolator:
             inference_script = os.path.join(self.rife_dir, "inference_img.py")
             
             if os.path.exists(inference_script):
+                # Create output directory
+                output_dir = os.path.join(temp_dir, "output")
+                os.makedirs(output_dir, exist_ok=True)
+                
                 cmd = [
                     sys.executable, inference_script,
                     "--img", frame1_path, frame2_path,
-                    "--output", output_path
+                    "--exp", "1"  # For single intermediate frame
                 ]
+                
+                # RIFE outputs to its own naming convention
+                expected_output = os.path.join(temp_dir, "img0_1_img1.png")
                 
                 # Change to RIFE directory to ensure proper imports
                 original_cwd = os.getcwd()
                 os.chdir(self.rife_dir)
                 
                 try:
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=temp_dir)
                     
-                    if result.returncode == 0 and os.path.exists(output_path):
+                    if result.returncode == 0 and os.path.exists(expected_output):
                         # Load interpolated frame
-                        interpolated_frame = cv2.imread(output_path)
+                        interpolated_frame = cv2.imread(expected_output)
                         logging.info("✅ Real RIFE interpolation successful")
                         return [interpolated_frame]
                     else:
@@ -161,7 +168,7 @@ class RealRIFEInterpolator:
                 finally:
                     os.chdir(original_cwd)
                     # Cleanup temp files
-                    for f in [frame1_path, frame2_path, output_path]:
+                    for f in [frame1_path, frame2_path, expected_output]:
                         if os.path.exists(f):
                             os.remove(f)
             else:

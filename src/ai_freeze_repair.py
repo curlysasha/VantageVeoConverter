@@ -21,6 +21,10 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
         shutil.copy2(video_path, output_path)
         return True
     
+    # Initialize Real RIFE once for all frames
+    real_rife = RealRIFEInterpolator()
+    logging.info(f"Real RIFE available: {real_rife.available}")
+    
     # Create set of frames that need repair
     frames_to_repair = set()
     for segment in freeze_predictions:
@@ -68,7 +72,7 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
                 logging.info(f"   Repairing frame {frame_idx}, neighbors found")
                 # Use RIFE to interpolate
                 try:
-                    interpolated = interpolate_with_rife(prev_frame, next_frame, rife_model)
+                    interpolated = interpolate_with_real_rife(prev_frame, next_frame, real_rife, rife_model)
                     if interpolated is not None:
                         current_frame = interpolated
                         repaired_count += 1
@@ -121,14 +125,12 @@ def find_neighbor_frames(all_frames, target_idx, frozen_frames):
     
     return prev_frame, next_frame
 
-def interpolate_with_rife(prev_frame, next_frame, rife_model):
+def interpolate_with_real_rife(prev_frame, next_frame, real_rife, rife_model):
     """
     Интерполировать один кадр между двумя с помощью НАСТОЯЩЕГО RIFE.
+    Использует переданный экземпляр real_rife для оптимизации.
     """
     try:
-        # Use Real RIFE interpolator
-        real_rife = RealRIFEInterpolator()
-        
         if not real_rife.available:
             logging.warning("     Real RIFE not available, using fallback")
             # Fallback to old model if available
@@ -139,9 +141,7 @@ def interpolate_with_rife(prev_frame, next_frame, rife_model):
             # Ultimate fallback
             return cv2.addWeighted(prev_frame, 0.5, next_frame, 0.5, 0)
         
-        logging.info("     Using Real RIFE (Practical-RIFE) for interpolation")
-        
-        # Use Real RIFE interpolation
+        # Use Real RIFE interpolation with existing instance
         interpolated_frames = real_rife.interpolate_frames(prev_frame, next_frame)
         
         if interpolated_frames and len(interpolated_frames) > 0:
@@ -154,8 +154,6 @@ def interpolate_with_rife(prev_frame, next_frame, rife_model):
         
     except Exception as e:
         logging.error(f"     Real RIFE interpolation error: {e}")
-        import traceback
-        traceback.print_exc()
         # Fallback to simple blending
         return cv2.addWeighted(prev_frame, 0.5, next_frame, 0.5, 0)
 
