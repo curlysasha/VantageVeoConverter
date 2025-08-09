@@ -7,7 +7,7 @@ import logging
 import torch
 import os
 from .timecode_freeze_predictor import predict_freezes_from_timecodes
-from .real_rife import RealRIFE
+from .comfy_rife import ComfyRIFE
 
 def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_model):
     """
@@ -22,9 +22,9 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
         shutil.copy2(video_path, output_path)
         return True
     
-    # Initialize REAL RIFE once for all frames
-    real_rife = RealRIFE()
-    logging.info(f"REAL RIFE available: {real_rife.available}")
+    # Initialize ComfyUI RIFE once for all frames
+    real_rife = ComfyRIFE()
+    logging.info(f"ComfyUI RIFE available: {real_rife.available}")
     
     # Create set of frames that need repair
     frames_to_repair = set()
