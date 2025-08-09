@@ -261,12 +261,61 @@ def retime_video(input_video_path, timecode_path, output_retimed_video_path):
 
 def mux_final_output(retimed_video_path, target_audio_path, final_output_path):
     """Combine retimed video with target audio."""
+    logging.info("🔊 mux_final_output: Starting audio muxing...")
+    logging.info(f"   Video input: {retimed_video_path}")
+    logging.info(f"   Audio input: {target_audio_path}")
+    logging.info(f"   Final output: {final_output_path}")
+    
+    # Check audio in target file first
+    try:
+        import json
+        audio_check_cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_streams', target_audio_path]
+        audio_check = subprocess.run(audio_check_cmd, capture_output=True, text=True, timeout=30)
+        
+        if audio_check.returncode == 0:
+            probe_data = json.loads(audio_check.stdout)
+            audio_streams = [s for s in probe_data.get('streams', []) if s.get('codec_type') == 'audio']
+            logging.info(f"🔍 Target audio streams: {len(audio_streams)}")
+            for i, stream in enumerate(audio_streams):
+                logging.info(f"   Stream {i}: {stream.get('codec_name', 'unknown')} @ {stream.get('bit_rate', 'unknown')} bps")
+        else:
+            logging.warning(f"⚠️ Could not probe target audio: {audio_check.stderr}")
+    except Exception as e:
+        logging.warning(f"⚠️ Audio probe failed: {e}")
+    
     command = [
-        "ffmpeg", "-y", "-i", retimed_video_path, "-i", target_audio_path,
-        "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0",
+        "ffmpeg", "-y", "-v", "info",  # More verbose output
+        "-i", retimed_video_path, "-i", target_audio_path,
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",  # Set audio bitrate
+        "-map", "0:v:0", "-map", "1:a:0",
         "-shortest", final_output_path
     ]
-    run_command(command)
+    
+    logging.info(f"🔧 FFmpeg command: {' '.join(command)}")
+    
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=300)
+        
+        logging.info(f"📊 FFmpeg return code: {result.returncode}")
+        if result.stdout:
+            logging.info(f"📊 FFmpeg STDOUT:\n{result.stdout}")
+        if result.stderr:
+            logging.info(f"📊 FFmpeg STDERR:\n{result.stderr}")
+        
+        if result.returncode != 0:
+            logging.error(f"❌ FFmpeg failed: {result.stderr}")
+            raise RuntimeError(f"Command failed: {result.stderr}")
+        else:
+            logging.info("✅ mux_final_output completed successfully")
+            
+        return result.stdout
+        
+    except subprocess.TimeoutExpired:
+        logging.error("❌ FFmpeg timeout in mux_final_output")
+        raise RuntimeError("FFmpeg timeout")
+    except Exception as e:
+        logging.error(f"❌ mux_final_output error: {e}")
+        raise
 
 def run_command(command):
     """Helper function to run shell commands."""

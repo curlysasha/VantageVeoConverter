@@ -266,7 +266,49 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             
             # Add audio to retimed video using target audio
             progress(0.8, desc="7/8: Adding audio to synchronized video...")
-            mux_final_output(paths["retimed_video"], target_audio_path, paths["retimed_with_audio"])
+            logging.info("🔊 DIAGNOSTIC: Adding audio to retimed video...")
+            logging.info(f"   Source video (no audio): {paths['retimed_video']}")
+            logging.info(f"   Target audio: {target_audio_path}")
+            logging.info(f"   Output (with audio): {paths['retimed_with_audio']}")
+            
+            # Check if source files exist
+            if not os.path.exists(paths["retimed_video"]):
+                logging.error(f"❌ Retimed video not found: {paths['retimed_video']}")
+            else:
+                logging.info(f"✅ Retimed video exists: {os.path.getsize(paths['retimed_video'])} bytes")
+                
+            if not os.path.exists(target_audio_path):
+                logging.error(f"❌ Target audio not found: {target_audio_path}")
+            else:
+                logging.info(f"✅ Target audio exists: {os.path.getsize(target_audio_path)} bytes")
+            
+            # Run mux_final_output with detailed logging
+            try:
+                mux_final_output(paths["retimed_video"], target_audio_path, paths["retimed_with_audio"])
+                
+                # Check result
+                if os.path.exists(paths["retimed_with_audio"]):
+                    size = os.path.getsize(paths["retimed_with_audio"])
+                    logging.info(f"✅ Video with audio created: {size} bytes")
+                    
+                    # Verify audio streams in result
+                    import subprocess
+                    verify_cmd = ['ffprobe', '-v', 'quiet', '-select_streams', 'a', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', paths["retimed_with_audio"]]
+                    verify_result = subprocess.run(verify_cmd, capture_output=True, text=True, timeout=30)
+                    
+                    if verify_result.stdout.strip():
+                        logging.info(f"✅ Audio verified in retimed video: {verify_result.stdout.strip()}")
+                    else:
+                        logging.warning("⚠️ No audio detected in retimed video!")
+                else:
+                    logging.error("❌ mux_final_output failed to create output file!")
+                    
+            except Exception as e:
+                logging.error(f"❌ mux_final_output failed: {e}")
+                # Fallback - use video without audio
+                logging.info("📝 Using video without audio as fallback")
+                import shutil
+                shutil.copy2(paths["retimed_video"], paths["retimed_with_audio"])
             
             # Create triple diagnostic: Original + Detection + AI Repair
             progress(0.9, desc="8/8: Creating AI diagnostic (Original + Detection + Repair)...")
