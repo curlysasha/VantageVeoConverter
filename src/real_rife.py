@@ -170,12 +170,29 @@ class RealRIFE:
             # Initialize model
             self.model = model_class()
             
-            # Load weights
-            model_path = os.path.join(self.rife_dir, "train_log", "flownet.pkl")
-            if os.path.exists(model_path):
-                self.model.load_model(model_path, -1)
-                logging.info("✅ RIFE model weights loaded")
-            else:
+            # Load weights - check different possible paths
+            possible_model_paths = [
+                os.path.join(self.rife_dir, "train_log", "flownet.pkl"),
+                os.path.join(self.rife_dir, "flownet.pkl"),
+                os.path.join(self.rife_dir, "train_log", "train_log", "flownet.pkl")
+            ]
+            
+            model_loaded = False
+            for model_path in possible_model_paths:
+                if os.path.exists(model_path) and os.path.isfile(model_path):
+                    try:
+                        logging.info(f"   Trying to load model from: {model_path}")
+                        self.model.load_model(model_path, -1)
+                        logging.info("✅ RIFE model weights loaded")
+                        model_loaded = True
+                        break
+                    except Exception as e:
+                        logging.warning(f"   Failed to load from {model_path}: {e}")
+                        continue
+                else:
+                    logging.debug(f"   Path does not exist or is not file: {model_path}")
+            
+            if not model_loaded:
                 logging.warning("⚠️ No model weights found, using random initialization")
             
             # Set to eval mode
