@@ -40,7 +40,7 @@ except ImportError as e:
     import whisper
 
 # Import our modules
-from src.rife_engine import RealRIFE
+from src.comfy_rife import ComfyRIFE
 from src.timing_analyzer import analyze_timing_changes
 from src.video_processor import interpolate_video, regenerate_timecodes_for_interpolated_video
 from src.audio_sync import *
@@ -72,7 +72,7 @@ def initialize_models():
         logging.error(f"Failed to load Whisper model: {e}")
     
     # Initialize RIFE
-    RIFE_MODEL = RealRIFE(DEVICE)
+    RIFE_MODEL = ComfyRIFE(DEVICE)
 
 def check_dependencies():
     """Check if required external tools are available."""

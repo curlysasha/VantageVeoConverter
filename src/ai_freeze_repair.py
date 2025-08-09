@@ -105,7 +105,7 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
                     logging.info(f"   Repairing frame {frame_idx} (seq {seq_start}-{seq_end}, pos {position}, timestep {timestep:.3f})")
                     
                     try:
-                        interpolated = interpolate_with_timestep_rife(prev_frame, next_frame, timestep, real_rife)
+                        interpolated = real_rife.interpolate_at_timestep(prev_frame, next_frame, timestep)
                         if interpolated is not None:
                             current_frame = interpolated
                             repaired_count += 1
@@ -295,28 +295,6 @@ def find_neighbor_frames(all_frames, seq_start, frozen_frames, seq_end):
     
     return prev_frame, next_frame
 
-def interpolate_with_timestep_rife(prev_frame, next_frame, timestep, real_rife):
-    """
-    Интерполировать один кадр с указанным timestep используя НАСТОЯЩИЙ RIFE.
-    """
-    try:
-        if real_rife and real_rife.available:
-            # Use custom interpolation with specific timestep
-            interpolated_frame = real_rife.interpolate_at_timestep(prev_frame, next_frame, timestep)
-            if interpolated_frame is not None:
-                return interpolated_frame
-        
-        raise Exception("❌ REAL RIFE not available!")
-        
-    except Exception as e:
-        logging.error(f"REAL RIFE timestep interpolation failed: {e}")
-        raise Exception(f"❌ REAL RIFE timestep interpolation failed: {e}")
-
-def interpolate_with_real_rife(prev_frame, next_frame, real_rife):
-    """
-    Интерполировать один кадр между двумя используя НАСТОЯЩИЙ RIFE из оригинального репозитория.
-    """
-    return interpolate_with_timestep_rife(prev_frame, next_frame, 0.5, real_rife)
 
 def create_ai_repair_report(repaired_count, total_freezes):
     """Create detailed repair report."""

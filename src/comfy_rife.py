@@ -507,37 +507,21 @@ class ComfyRIFE:
             return None
     
     def interpolate_at_timestep(self, frame1, frame2, timestep):
-        """Interpolate single frame at timestep"""
+        """Interpolate single frame at timestep using REAL RIFE ONLY"""
         if not self.available:
-            return self._simple_blend(frame1, frame2, timestep)
+            raise Exception("❌ REAL RIFE not available! No fallback - fix RIFE setup!")
         
-        try:
-            # Convert frames to tensors
-            tensor1 = self._frame_to_tensor(frame1)
-            tensor2 = self._frame_to_tensor(frame2)
+        # Convert frames to tensors
+        tensor1 = self._frame_to_tensor(frame1)
+        tensor2 = self._frame_to_tensor(frame2)
+        
+        with torch.no_grad():
+            # Run REAL RIFE inference
+            result_tensor = self.model(tensor1, tensor2, timestep, fastmode=True, ensemble=False)
             
-            with torch.no_grad():
-                # Run REAL RIFE inference
-                result_tensor = self.model(tensor1, tensor2, timestep, fastmode=True, ensemble=False)
-                
-                # Convert back to frame
-                result_frame = self._tensor_to_frame(result_tensor)
-                return result_frame
-                
-        except Exception as e:
-            logging.warning(f"RIFE inference failed: {e}, using blend fallback")
-            return self._simple_blend(frame1, frame2, timestep)
-    
-    def _simple_blend(self, frame1, frame2, timestep):
-        """Simple weighted blend fallback"""
-        weight1 = 1.0 - timestep
-        weight2 = timestep
-        
-        frame1_f = frame1.astype(np.float32)
-        frame2_f = frame2.astype(np.float32)
-        
-        result = (frame1_f * weight1 + frame2_f * weight2)
-        return np.clip(result, 0, 255).astype(np.uint8)
+            # Convert back to frame
+            result_frame = self._tensor_to_frame(result_tensor)
+            return result_frame
     
     def _frame_to_tensor(self, frame):
         """Convert frame to tensor"""
