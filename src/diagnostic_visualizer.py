@@ -30,10 +30,16 @@ def create_diagnostic_video(input_video_path, output_path, timecode_path, rife_m
         logging.warning("No problem segments detected!")
     
     # Create set of problem frames for quick lookup
+    # ONLY mark frames that are ACTUALLY problematic, not entire segments!
     problem_frames = set()
+    
+    # Only add frames that have specific issues
     for seg in problem_segments:
-        for frame_idx in range(seg['start_frame'], seg['end_frame'] + 1):
-            problem_frames.add(frame_idx)
+        if 'issues' in seg:
+            for issue in seg['issues']:
+                frame_idx = issue.get('frame')
+                if frame_idx is not None:
+                    problem_frames.add(frame_idx)
     
     # Also get individual frame issues for detailed info
     frame_issues = {}

@@ -234,9 +234,30 @@ def generate_vfr_timecodes(video_path, align_source_path, align_target_path, out
 def retime_video(input_video_path, timecode_path, output_retimed_video_path):
     """Apply timestamps using mp4fpsmod."""
     import shutil
+    import os
     binary = shutil.which("mp4fpsmod")
+    
+    if not binary:
+        logging.error("mp4fpsmod not found! Cannot create retimed video.")
+        # Fallback - just copy the original
+        shutil.copy2(input_video_path, output_retimed_video_path)
+        return
+    
+    logging.info(f"Running mp4fpsmod: {binary}")
     command = [binary, "-t", timecode_path, "-o", output_retimed_video_path, input_video_path]
-    run_command(command)
+    
+    try:
+        run_command(command)
+        # Verify the output
+        if os.path.exists(output_retimed_video_path):
+            size = os.path.getsize(output_retimed_video_path)
+            logging.info(f"mp4fpsmod completed. Output size: {size} bytes")
+        else:
+            logging.error("mp4fpsmod failed to create output file!")
+    except Exception as e:
+        logging.error(f"mp4fpsmod error: {e}")
+        # Fallback - copy original
+        shutil.copy2(input_video_path, output_retimed_video_path)
 
 def mux_final_output(retimed_video_path, target_audio_path, final_output_path):
     """Combine retimed video with target audio."""

@@ -30,7 +30,7 @@ def analyze_timing_changes(timecode_path, fps=25, rife_mode="off", video_path=No
     # Different sensitivity thresholds
     if rife_mode == "diagnostic":
         threshold = 0.10  # 10% deviation - balanced for diagnostic
-        merge_distance = 3   # Moderate merge distance
+        merge_distance = 1   # Small merge distance - don't group everything together!
     elif rife_mode == "precision":
         threshold = 0.05  # 5% deviation - very sensitive
         merge_distance = 2  # Smaller merge distance for precision
