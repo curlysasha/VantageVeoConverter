@@ -1,5 +1,5 @@
 """
-RIFE AI Engine for frame interpolation
+RIFE AI Engine for frame interpolation - Updated to use PyTorch RIFE
 """
 import logging
 import torch
@@ -8,148 +8,37 @@ import cv2
 import numpy as np
 import subprocess
 import sys
+from .pytorch_rife import PyTorchRIFE
 
 class RealRIFE:
-    """Real RIFE AI model for frame interpolation."""
+    """Real RIFE AI model for frame interpolation - PyTorch implementation."""
     
     def __init__(self, device="cuda"):
-        self.model = None
         self.device = device if torch.cuda.is_available() else "cpu"
         self.available = False
-        self.method = "simple"
+        self.method = "pytorch_rife"
+        self.pytorch_rife = None
         self._setup_rife()
     
     def _setup_rife(self):
-        """Setup Real RIFE AI model with verbose logging."""
+        """Setup PyTorch RIFE AI model."""
         try:
-            logging.info("🤖 Setting up Real RIFE AI model...")
-            logging.info("⏳ This will take 2-5 minutes on first run (downloads AI model)")
+            logging.info("🤖 Setting up PyTorch RIFE AI model...")
             
-            # Method 1: Real RIFE via arXiv implementation
-            try:
-                logging.info("📦 Step 1/3: Installing Real RIFE AI...")
-                logging.info("   → Downloading RIFE neural network (please wait)...")
-                
-                # Install Real RIFE
-                logging.info("   → Installing torch + RIFE packages...")
-                logging.info(f"   → Target device: {self.device}")
-                
-                # Use CUDA version if GPU available
-                if self.device == "cuda":
-                    torch_url = "https://download.pytorch.org/whl/cu121"  # CUDA 12.1
-                    logging.info("   → Installing CUDA-enabled PyTorch...")
-                else:
-                    torch_url = "https://download.pytorch.org/whl/cpu"
-                    logging.info("   → Installing CPU-only PyTorch...")
-                
-                result = subprocess.run([
-                    sys.executable, "-m", "pip", "install", 
-                    "torch", "torchvision", "torchaudio", 
-                    "--index-url", torch_url
-                ], capture_output=True, text=True, timeout=300)
-                
-                if result.returncode == 0:
-                    logging.info("   ✅ PyTorch installed")
-                    
-                    # Try multiple RIFE sources
-                    logging.info("   → Installing Real RIFE implementation...")
-                    
-                    # Method 1: Try direct wheel if available
-                    rife_packages = [
-                        "rife-ncnn-vulkan-python-wheels",  # Pre-compiled wheels
-                        "rife-interpolation",              # Simplified RIFE
-                        "video-frame-interpolation"        # TensorFlow FILM
-                    ]
-                    
-                    rife_installed = False
-                    for pkg in rife_packages:
-                        logging.info(f"   → Trying {pkg}...")
-                        result_pkg = subprocess.run([
-                            sys.executable, "-m", "pip", "install", pkg, "--quiet"
-                        ], capture_output=True, text=True, timeout=120)
-                        
-                        if result_pkg.returncode == 0:
-                            logging.info(f"   ✅ {pkg} installed!")
-                            rife_installed = True
-                            break
-                        else:
-                            logging.info(f"   ❌ {pkg} failed: {result_pkg.stderr[:100]}")
-                    
-                    if not rife_installed:
-                        # Manual RIFE setup
-                        logging.info("   → Setting up manual RIFE...")
-                        try:
-                            self._setup_direct_rife()
-                            rife_installed = True
-                        except Exception as e:
-                            logging.warning(f"   ❌ Manual RIFE failed: {e}")
-                    
-                    if rife_installed:
-                        self.method = "real_rife" 
-                        self.available = True
-                        logging.info("✅ Real RIFE AI ready!")
-                        return
-                
-            except Exception as e:
-                logging.warning(f"   ❌ Real RIFE installation failed: {str(e)[:200]}")
+            # Initialize PyTorch RIFE
+            self.pytorch_rife = PyTorchRIFE(self.device)
             
-            # Method 2: Alternative RIFE packages
-            try:
-                logging.info("📦 Step 2/3: Trying alternative RIFE packages...")
-                
-                packages_to_try = [
-                    "rife",
-                    "RIFE-pytorch", 
-                    "frame-interpolation-pytorch"
-                ]
-                
-                for package in packages_to_try:
-                    logging.info(f"   → Trying {package}...")
-                    result = subprocess.run([
-                        sys.executable, "-m", "pip", "install", package, "--quiet"
-                    ], capture_output=True, text=True, timeout=180)
-                    
-                    if result.returncode == 0:
-                        logging.info(f"   ✅ {package} installed successfully!")
-                        self.method = f"package_{package}"
-                        self.available = True
-                        return
-                
-            except Exception as e:
-                logging.warning(f"   ❌ Alternative packages failed: {e}")
-            
-            # Method 3: Enhanced OpenCV with optical flow
-            try:
-                logging.info("📦 Step 3/3: Installing enhanced interpolation...")
-                logging.info("   → Installing scikit-image for optical flow...")
-                
-                result = subprocess.run([
-                    sys.executable, "-m", "pip", "install", 
-                    "scikit-image", "Pillow", "--quiet"
-                ], capture_output=True, text=True, timeout=180)
-                
-                if result.returncode == 0:
-                    logging.info("   ✅ Enhanced interpolation tools installed")
-                    
-                    from PIL import Image
-                    import skimage
-                    
-                    self.method = "enhanced_cv"
-                    self.available = True
-                    logging.info("✅ Enhanced optical flow interpolation ready!")
-                    return
-                
-            except Exception as e:
-                logging.warning(f"   ❌ Enhanced CV failed: {e}")
-            
-            # Final fallback
-            logging.warning("⚠️ Could not install any advanced RIFE")
-            logging.info("🔧 Using basic OpenCV interpolation")
-            self.method = "simple"
-            self.available = False
+            if self.pytorch_rife.available:
+                self.method = "pytorch_rife"
+                self.available = True
+                logging.info("✅ PyTorch RIFE AI ready!")
+            else:
+                self.method = "enhanced_cv" 
+                self.available = False
+                logging.info("⚠️ PyTorch RIFE failed, using enhanced fallback")
                 
         except Exception as e:
-            logging.error(f"❌ RIFE setup completely failed: {e}")
+            logging.error(f"❌ PyTorch RIFE setup failed: {e}")
             self.method = "simple"
             self.available = False
             
@@ -168,51 +57,14 @@ class RealRIFE:
         except Exception as e:
             logging.warning(f"Could not get GPU info: {e}")
     
-    def _setup_direct_rife(self):
-        """Setup RIFE model directly from GitHub."""
-        import os
-        import urllib.request
-        import zipfile
-        
-        # RIFE model directory
-        rife_dir = os.path.expanduser("~/.cache/rife")
-        os.makedirs(rife_dir, exist_ok=True)
-        
-        model_path = os.path.join(rife_dir, "RIFE_HDv3.pkl")
-        
-        if not os.path.exists(model_path):
-            logging.info("Downloading RIFE model...")
-            model_url = "https://github.com/megvii-research/ECCV2022-RIFE/releases/download/v4.6/train_log.zip"
-            
-            zip_path = os.path.join(rife_dir, "rife_model.zip")
-            urllib.request.urlretrieve(model_url, zip_path)
-            
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(rife_dir)
-            
-            os.remove(zip_path)
-            logging.info("RIFE model downloaded successfully")
-        
-        # Import RIFE
-        sys.path.append(rife_dir)
-        try:
-            from RIFE import Model
-            self.model = Model()
-            self.model.load_model(model_path, -1)
-            logging.info("Real RIFE model loaded successfully")
-            self.available = True
-        except Exception as e:
-            logging.warning(f"Could not load RIFE model: {e}")
-            raise
+    # Old setup function removed - using PyTorch RIFE now
     
     def interpolate_frames(self, frame1, frame2, num_intermediate=1):
-        """Real RIFE AI interpolation between two frames."""
+        """Real PyTorch RIFE AI interpolation between two frames."""
         try:
-            # Route to appropriate RIFE method
-            if self.method == "real_rife":
-                return self._real_rife_interpolation(frame1, frame2, num_intermediate)
-            elif self.method.startswith("package_"):
-                return self._package_rife_interpolation(frame1, frame2, num_intermediate)
+            # Use PyTorch RIFE if available
+            if self.method == "pytorch_rife" and self.pytorch_rife and self.pytorch_rife.available:
+                return self.pytorch_rife.interpolate_frames(frame1, frame2, num_intermediate)
             elif self.method == "enhanced_cv":
                 return self._enhanced_interpolation(frame1, frame2, num_intermediate)
             else:
@@ -222,70 +74,7 @@ class RealRIFE:
             logging.warning(f"RIFE interpolation failed, using fallback: {e}")
             return self._simple_interpolation(frame1, frame2, num_intermediate)
     
-    def _real_rife_interpolation(self, frame1, frame2, num_intermediate):
-        """Use Real RIFE AI model for interpolation."""
-        try:
-            # Load RIFE model if not loaded
-            if not hasattr(self, 'rife_model'):
-                logging.info("Loading RIFE model...")
-                # Initialize RIFE model here
-                # This is where the real RIFE model would be loaded
-                self.rife_model = None  # Placeholder
-                
-            interpolated_frames = []
-            
-            # Convert frames to tensors
-            def frame_to_tensor(frame):
-                # Convert BGR to RGB, normalize to [0,1]
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                tensor = torch.from_numpy(frame_rgb).float() / 255.0
-                tensor = tensor.permute(2, 0, 1).unsqueeze(0)  # NCHW format
-                return tensor
-            
-            frame1_tensor = frame_to_tensor(frame1)
-            frame2_tensor = frame_to_tensor(frame2)
-            
-            for i in range(1, num_intermediate + 1):
-                timestep = i / (num_intermediate + 1)
-                
-                # Here would be the real RIFE inference
-                # For now, use advanced tensor blending
-                with torch.no_grad():
-                    # Advanced blending using PyTorch
-                    blended_tensor = frame1_tensor * (1 - timestep) + frame2_tensor * timestep
-                    
-                    # Convert back to numpy
-                    result_tensor = blended_tensor.squeeze(0).permute(1, 2, 0)
-                    result_rgb = (result_tensor * 255).clamp(0, 255).byte().numpy()
-                    result_bgr = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2BGR)
-                    
-                interpolated_frames.append(result_bgr)
-            
-            return interpolated_frames
-            
-        except Exception as e:
-            logging.warning(f"Real RIFE failed: {e}")
-            return self._simple_interpolation(frame1, frame2, num_intermediate)
-    
-    def _package_rife_interpolation(self, frame1, frame2, num_intermediate):
-        """Use installed RIFE package for interpolation."""
-        try:
-            # Try to use any installed RIFE package
-            interpolated_frames = []
-            
-            for i in range(1, num_intermediate + 1):
-                timestep = i / (num_intermediate + 1)
-                
-                # Use package-specific RIFE method
-                # This would depend on which package was successfully installed
-                result = cv2.addWeighted(frame1, 1-timestep, frame2, timestep, 0)
-                interpolated_frames.append(result)
-            
-            return interpolated_frames
-            
-        except Exception as e:
-            logging.warning(f"Package RIFE failed: {e}")
-            return self._simple_interpolation(frame1, frame2, num_intermediate)
+    # Old RIFE functions removed - using PyTorch RIFE now
 
     def _enhanced_interpolation(self, frame1, frame2, num_intermediate):
         """Enhanced GPU-accelerated interpolation with duplicate frame handling."""

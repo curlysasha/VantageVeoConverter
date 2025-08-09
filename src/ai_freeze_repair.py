@@ -6,7 +6,7 @@ import numpy as np
 import logging
 import torch
 from .timecode_freeze_predictor import predict_freezes_from_timecodes
-from .real_rife_interpolator import RealRIFEInterpolator
+from .pytorch_rife import PyTorchRIFE
 
 def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_model):
     """
@@ -21,9 +21,9 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
         shutil.copy2(video_path, output_path)
         return True
     
-    # Initialize Real RIFE once for all frames
-    real_rife = RealRIFEInterpolator()
-    logging.info(f"Real RIFE available: {real_rife.available}")
+    # Initialize PyTorch RIFE once for all frames
+    pytorch_rife = PyTorchRIFE()
+    logging.info(f"PyTorch RIFE available: {pytorch_rife.available}")
     
     # Create set of frames that need repair
     frames_to_repair = set()
@@ -70,9 +70,9 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             
             if prev_frame is not None and next_frame is not None:
                 logging.info(f"   Repairing frame {frame_idx}, neighbors found")
-                # Use RIFE to interpolate
+                # Use PyTorch RIFE to interpolate
                 try:
-                    interpolated = interpolate_with_real_rife(prev_frame, next_frame, real_rife, rife_model)
+                    interpolated = interpolate_with_pytorch_rife(prev_frame, next_frame, pytorch_rife)
                     if interpolated is not None:
                         current_frame = interpolated
                         repaired_count += 1
@@ -125,21 +125,22 @@ def find_neighbor_frames(all_frames, target_idx, frozen_frames):
     
     return prev_frame, next_frame
 
-def interpolate_with_real_rife(prev_frame, next_frame, real_rife, rife_model):
+def interpolate_with_pytorch_rife(prev_frame, next_frame, pytorch_rife):
     """
-    Интерполировать один кадр между двумя - использует ТОЛЬКО Enhanced CV метод.
-    Отключен Real RIFE из-за проблем с модулями.
+    Интерполировать один кадр между двумя используя настоящий PyTorch RIFE.
     """
     try:
-        # Skip problematic Real RIFE, use Enhanced CV directly
-        if rife_model and hasattr(rife_model, 'interpolate_frames'):
+        # Use PyTorch RIFE for real AI interpolation
+        if pytorch_rife and pytorch_rife.available:
             try:
-                interpolated_frames = rife_model.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
+                interpolated_frames = pytorch_rife.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
                 if interpolated_frames and len(interpolated_frames) > 0:
-                    logging.info("     ✅ Enhanced CV interpolation successful")
+                    logging.info("     ✅ PyTorch RIFE AI interpolation successful")
                     return interpolated_frames[0]
-            except Exception as enhanced_error:
-                logging.warning(f"     Enhanced interpolation failed: {enhanced_error}")
+                else:
+                    logging.warning("     PyTorch RIFE returned empty result")
+            except Exception as rife_error:
+                logging.warning(f"     PyTorch RIFE failed: {rife_error}")
         
         # Fallback to improved optical flow interpolation
         logging.info("     Using improved optical flow fallback")
