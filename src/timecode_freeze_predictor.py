@@ -27,58 +27,69 @@ def predict_freezes_from_timecodes(timecode_path, fps=24.0):
     expected_interval_ms = 1000.0 / fps
     logging.info(f"Expected interval: {expected_interval_ms:.1f}ms per frame")
     
+    # Simulate physical frame duplication to find REAL duplicates
     freeze_predictions = []
+    target_frame_duration_ms = expected_interval_ms
     
-    # Analyze each frame interval
-    for i in range(len(timestamps_ms) - 1):
-        current_time = timestamps_ms[i]
-        next_time = timestamps_ms[i + 1]
-        actual_interval = next_time - current_time
+    # Simulate which input frames will be used for each output moment
+    frame_usage = {}  # output_frame_idx -> input_frame_idx
+    output_frame_idx = 0
+    
+    for output_time_ms in np.arange(timestamps_ms[0], timestamps_ms[-1], target_frame_duration_ms):
+        # Find which input frame this output time corresponds to
+        input_frame_idx = 0
         
-        # Calculate deviation from expected
-        deviation_pct = abs(actual_interval - expected_interval_ms) / expected_interval_ms
+        # Find the timecode bracket this output time falls into
+        for i in range(len(timestamps_ms) - 1):
+            if timestamps_ms[i] <= output_time_ms < timestamps_ms[i + 1]:
+                input_frame_idx = i
+                break
         
-        # Predict freeze types
-        freeze_info = None
+        # Ensure frame index is valid
+        if input_frame_idx >= len(timestamps_ms) - 1:
+            input_frame_idx = len(timestamps_ms) - 2
+            
+        frame_usage[output_frame_idx] = input_frame_idx
+        output_frame_idx += 1
+    
+    logging.info(f"Simulated {len(frame_usage)} output frames")
+    
+    # Now detect actual duplicates by checking frame_usage
+    prev_input_frame = None
+    duplicate_count = 0
+    
+    for out_idx in sorted(frame_usage.keys()):
+        input_frame = frame_usage[out_idx]
         
-        if actual_interval < expected_interval_ms * 0.5:
-            # Very short interval - will cause duplicate frame
-            freeze_info = {
-                'frame': i + 1,
-                'type': 'SHORT_INTERVAL',
-                'actual_interval_ms': actual_interval,
-                'expected_interval_ms': expected_interval_ms,
-                'deviation_pct': deviation_pct * 100,
-                'severity': 'HIGH' if deviation_pct > 0.8 else 'MEDIUM',
-                'reason': f'Interval too short: {actual_interval:.1f}ms (expected {expected_interval_ms:.1f}ms)'
-            }
+        if prev_input_frame is not None and input_frame == prev_input_frame:
+            # This is a REAL duplicate frame!
+            duplicate_count += 1
+            
+            # Calculate timing info for this frame
+            actual_output_time = timestamps_ms[0] + (out_idx * target_frame_duration_ms)
+            
+            # Find the interval that caused this duplicate
+            interval_idx = input_frame
+            if interval_idx < len(timestamps_ms) - 1:
+                actual_interval = timestamps_ms[interval_idx + 1] - timestamps_ms[interval_idx]
+                deviation_pct = abs(actual_interval - expected_interval_ms) / expected_interval_ms
+                
+                freeze_info = {
+                    'frame': out_idx,
+                    'type': 'FREEZE_DUPLICATE',
+                    'actual_interval_ms': actual_interval,
+                    'expected_interval_ms': expected_interval_ms,
+                    'deviation_pct': deviation_pct * 100,
+                    'severity': 'HIGH' if deviation_pct > 1.0 else 'MEDIUM',
+                    'reason': f'Duplicate frame (input {input_frame}): {actual_interval:.1f}ms interval',
+                    'input_frame_used': input_frame
+                }
+                
+                freeze_predictions.append(freeze_info)
         
-        elif actual_interval > expected_interval_ms * 2.0:
-            # Very long interval - will cause frame skip/stretch
-            freeze_info = {
-                'frame': i + 1,
-                'type': 'LONG_INTERVAL', 
-                'actual_interval_ms': actual_interval,
-                'expected_interval_ms': expected_interval_ms,
-                'deviation_pct': deviation_pct * 100,
-                'severity': 'HIGH' if deviation_pct > 3.0 else 'MEDIUM',
-                'reason': f'Interval too long: {actual_interval:.1f}ms (expected {expected_interval_ms:.1f}ms)'
-            }
-        
-        elif deviation_pct > 0.3:  # 30% deviation
-            # Moderate timing issue
-            freeze_info = {
-                'frame': i + 1,
-                'type': 'TIMING_DEVIATION',
-                'actual_interval_ms': actual_interval,
-                'expected_interval_ms': expected_interval_ms, 
-                'deviation_pct': deviation_pct * 100,
-                'severity': 'LOW',
-                'reason': f'Timing deviation: {deviation_pct*100:.1f}%'
-            }
-        
-        if freeze_info:
-            freeze_predictions.append(freeze_info)
+        prev_input_frame = input_frame
+    
+    logging.info(f"Found {duplicate_count} actual duplicate frames")
     
     # Group consecutive freeze predictions
     grouped_freezes = []
