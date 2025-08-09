@@ -19,6 +19,7 @@ from src.timing_analyzer import analyze_timing_changes
 from src.video_processor import interpolate_video, regenerate_timecodes_for_interpolated_video
 from src.audio_sync import *
 from src.comparison import create_comparison_grid
+from src.diagnostic_visualizer import create_diagnostic_video
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -179,6 +180,84 @@ Smoothing: Enabled (cubic spline + filter)
             except:
                 pass
         raise gr.Error(f"Processing failed: {e}")
+
+def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive", progress=gr.Progress()):
+    """Diagnostic workflow - visualize problem frames without interpolation."""
+    start_time = time.time()
+    
+    try:
+        check_dependencies()
+        
+        # Create output file
+        diag_fd, diag_output_path = tempfile.mkstemp(suffix="_diagnostic.mp4", prefix="diagnostic_")
+        os.close(diag_fd)
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            logging.info(f"Starting diagnostic analysis in {temp_dir}")
+            
+            paths = {
+                "source_audio": os.path.join(temp_dir, "source_16k.wav"),
+                "target_audio_processed": os.path.join(temp_dir, "target_16k.wav"),
+                "transcript": os.path.join(temp_dir, "transcript.txt"),
+                "align_source": os.path.join(temp_dir, "align_source.json"),
+                "align_target": os.path.join(temp_dir, "align_target.json"),
+                "timecodes": os.path.join(temp_dir, "timecodes_v2.txt"),
+            }
+            
+            # Standard pipeline for timecode generation
+            progress(0.1, desc="1/6: Extracting audio...")
+            extract_and_standardize_audio(input_video_path, paths["source_audio"])
+            extract_and_standardize_audio(target_audio_path, paths["target_audio_processed"])
+            
+            progress(0.2, desc=f"2/6: Transcribing (Whisper on {DEVICE})...")
+            transcript_text = transcribe_audio(paths["target_audio_processed"], paths["transcript"], WHISPER_MODEL)
+            
+            progress(0.35, desc="3/6: Aligning Source...")
+            forced_alignment(paths["source_audio"], paths["transcript"], paths["align_source"])
+            
+            progress(0.5, desc="4/6: Aligning Target...")
+            forced_alignment(paths["target_audio_processed"], paths["transcript"], paths["align_target"])
+            
+            progress(0.65, desc="5/6: Calculating timecodes...")
+            generate_vfr_timecodes(
+                input_video_path, 
+                paths["align_source"], 
+                paths["align_target"], 
+                paths["timecodes"],
+                smooth_interpolation=True
+            )
+            
+            # Create diagnostic video
+            progress(0.8, desc=f"6/6: Creating diagnostic visualization ({rife_mode} mode)...")
+            marked_frames, report = create_diagnostic_video(
+                input_video_path,
+                diag_output_path,
+                paths["timecodes"],
+                rife_mode=rife_mode
+            )
+            
+            duration = time.time() - start_time
+            
+            # Status message
+            status_msg = f"""🔍 DIAGNOSTIC ANALYSIS COMPLETE!
+Processing time: {duration:.2f} seconds
+Mode: {rife_mode}
+
+{report}
+
+Watch the diagnostic video to see which frames were detected as problematic.
+Red frames = detected issues that would be interpolated."""
+            
+            return diag_output_path, status_msg
+    
+    except Exception as e:
+        logging.error(f"Diagnostic error: {e}", exc_info=True)
+        if 'diag_output_path' in locals() and os.path.exists(diag_output_path):
+            try:
+                os.unlink(diag_output_path)
+            except:
+                pass
+        raise gr.Error(f"Diagnostic failed: {e}")
 
 def comparison_workflow(input_video_path, target_audio_path, progress=gr.Progress()):
     """Workflow для сравнения всех режимов."""
@@ -357,6 +436,12 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
             submit_button = gr.Button("Start Synchronization", variant="primary")
             
             gr.Markdown("---")
+            gr.Markdown("### 🔍 Diagnostic Mode")
+            gr.Markdown("Visualize detected problem frames without interpolation")
+            
+            diagnostic_button = gr.Button("🔍 Run Diagnostic (Show Problem Frames)", variant="secondary")
+            
+            gr.Markdown("---")
             gr.Markdown("### Compare All Modes")
             gr.Markdown("Process video with all 4 modes and create side-by-side comparison")
             
@@ -401,27 +486,46 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
             """)
     
     with gr.Row():
-        gr.Markdown("""
-        ### 🎬 **Comparison Mode**
+        with gr.Column():
+            gr.Markdown("""
+            ### 🔍 **Diagnostic Mode**
+            
+            Creates a video with **visual markers** on detected problem frames:
+            - 🔴 **RED BORDER** = Problem frame detected
+            - 📝 **TEXT OVERLAY** = Shows issue type (freeze, duplicate, etc.)
+            - 🟡 **YELLOW CORNERS** = Visual emphasis
+            
+            Use this to verify detection accuracy before running interpolation!
+            """)
         
-        Automatically processes your video with all 4 modes and creates a **2x2 grid comparison**:
-        
-        ```
-        ┌─────────────┬─────────────┐
-        │  ORIGINAL   │  ADAPTIVE   │
-        │ (VFR Only)  │    RIFE     │
-        ├─────────────┼─────────────┤  
-        │ PRECISION   │  MAXIMUM    │
-        │    RIFE     │    RIFE     │
-        └─────────────┴─────────────┘
-        ```
-        
-        Perfect for evaluating which mode works best for your content!
-        """)
+        with gr.Column():
+            gr.Markdown("""
+            ### 🎬 **Comparison Mode**
+            
+            Automatically processes your video with all 4 modes and creates a **2x2 grid comparison**:
+            
+            ```
+            ┌─────────────┬─────────────┐
+            │  ORIGINAL   │  ADAPTIVE   │
+            │ (VFR Only)  │    RIFE     │
+            ├─────────────┼─────────────┤  
+            │ PRECISION   │  MAXIMUM    │
+            │    RIFE     │    RIFE     │
+            └─────────────┴─────────────┘
+            ```
+            
+            Perfect for evaluating which mode works best for your content!
+            """)
 
     # Connect buttons to functions
     submit_button.click(
         fn=synchronization_workflow,
+        inputs=[video_input, audio_input, rife_mode],
+        outputs=[video_output, text_output]
+    )
+    
+    diagnostic_button.click(
+        fn=diagnostic_workflow,
         inputs=[video_input, audio_input, rife_mode],
         outputs=[video_output, text_output]
     )
