@@ -23,6 +23,7 @@ from src.diagnostic_visualizer import create_diagnostic_video
 from src.simple_diagnostic import create_simple_diagnostic
 from src.comparison_diagnostic import create_comparison_diagnostic
 from src.physical_retime import create_physical_retime
+from src.predictive_diagnostic import create_predictive_diagnostic
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -235,11 +236,12 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             progress(0.75, desc="6/7: Creating video with physical frame duplicates...")
             create_physical_retime(input_video_path, paths["timecodes"], paths["retimed_video"])
             
-            # Create side-by-side comparison showing synchronized video with freeze markers
-            progress(0.85, desc="7/7: Creating side-by-side freeze comparison...")
-            marked_frames, report = create_comparison_diagnostic(
+            # Create predictive diagnostic using timecode analysis
+            progress(0.85, desc="7/7: Creating predictive freeze diagnostic...")
+            marked_frames, report = create_predictive_diagnostic(
                 paths["retimed_video"],  # Use synchronized video as source
-                diag_output_path        # Create comparison video
+                paths["timecodes"],      # Analyze timecodes for predictions
+                diag_output_path        # Create predictive comparison video
             )
             
             duration = time.time() - start_time
