@@ -157,15 +157,34 @@ class RealRIFE:
                         
                         if hasattr(self.model, 'load_state_dict'):
                             try:
-                                self.model.load_state_dict(state_dict, strict=False)
-                                load_success = True
+                                # Try to load compatible weights only
+                                result = self.model.load_state_dict(state_dict, strict=False)
+                                if result.missing_keys or result.unexpected_keys:
+                                    logging.info(f"   Partial load: {len(result.missing_keys)} missing, {len(result.unexpected_keys)} unexpected")
+                                    if len(result.missing_keys) < len(state_dict) // 2:  # If we loaded at least 50%
+                                        load_success = True
+                                        logging.info("   ✅ Partial weights loaded successfully (>50% compatible)")
+                                    else:
+                                        logging.warning("   Too many missing keys for useful partial load")
+                                else:
+                                    load_success = True
+                                    logging.info("   ✅ Perfect weight match")
                             except Exception as e:
                                 logging.warning(f"   Model load_state_dict failed: {e}")
                         
                         if not load_success and hasattr(self.model, 'flownet'):
                             try:
-                                self.model.flownet.load_state_dict(state_dict, strict=False)
-                                load_success = True
+                                result = self.model.flownet.load_state_dict(state_dict, strict=False)
+                                if result.missing_keys or result.unexpected_keys:
+                                    logging.info(f"   Flownet partial load: {len(result.missing_keys)} missing, {len(result.unexpected_keys)} unexpected")
+                                    if len(result.missing_keys) < len(state_dict) // 2:
+                                        load_success = True
+                                        logging.info("   ✅ Flownet partial weights loaded successfully")
+                                    else:
+                                        logging.warning("   Too many missing flownet keys")
+                                else:
+                                    load_success = True
+                                    logging.info("   ✅ Perfect flownet weight match")
                             except Exception as e:
                                 logging.warning(f"   Flownet load_state_dict failed: {e}")
                         
