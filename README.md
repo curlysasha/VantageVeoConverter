@@ -1,3 +1,12 @@
+ Инструкции для скачивания:
+
+  1. Перейди на GitHub: https://github.com/hzwer/ECCV2022-RIFE
+  2. Скачай flownet.pkl из любого релиза (например v4.6)
+  3. Положи файл в: /mnt/c/GIT/VantageVeoConverter/weights/flownet.pkl
+
+
+
+
 # --- 1/3: Updating system packages and installing all dependencies ---
 echo "--- 1/3: Updating system packages and installing dependencies (FFmpeg, eSpeak, Build Tools) ---"
 # We are root, so we use apt-get directly. DEBIAN_FRONTEND=noninteractive prevents popups.

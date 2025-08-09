@@ -96,14 +96,18 @@ class RealRIFE:
     def _load_pretrained_weights(self):
         """Load pretrained RIFE weights."""
         try:
-            # Try to find weights in RIFE directory
+            # Try to find weights in project weights directory first, then RIFE directory
+            project_root = os.path.dirname(os.path.dirname(__file__))  # Go up from src/ to project root
             possible_weights = [
+                # Project weights directory (preferred)
+                os.path.join(project_root, 'weights', 'flownet.pkl'),
+                os.path.join(project_root, 'weights', 'flownet.pth'),
+                os.path.join(project_root, 'weights', 'rife_model.pkl'),
+                os.path.join(project_root, 'weights', 'rife_model.pth'),
+                # RIFE directory (fallback)
                 os.path.join(self.rife_dir, 'train_log', 'flownet.pkl'),
-                os.path.join(self.rife_dir, 'train_log', 'flownet.pth'),
                 os.path.join(self.rife_dir, 'checkpoints', 'flownet.pkl'),
-                os.path.join(self.rife_dir, 'checkpoints', 'flownet.pth'),
                 os.path.join(self.rife_dir, 'flownet.pkl'),
-                os.path.join(self.rife_dir, 'flownet.pth'),
             ]
             
             weights_loaded = False
@@ -136,63 +140,14 @@ class RealRIFE:
                         continue
             
             if not weights_loaded:
-                # Try to download weights from GitHub releases
-                logging.info("🌐 Attempting to download RIFE pretrained weights...")
-                weights_loaded = self._download_pretrained_weights()
-            
-            if not weights_loaded:
-                logging.warning("⚠️ No pretrained weights available - using random initialization")
+                logging.warning("⚠️ No pretrained weights found - using random initialization")
                 logging.warning("   This will cause poor interpolation quality!")
-                logging.info("   For better results, manually download RIFE weights")
+                logging.info("   To fix: Download flownet.pkl from RIFE GitHub releases")
+                logging.info(f"   Place in: {os.path.join(project_root, 'weights', 'flownet.pkl')}")
                 
         except Exception as e:
             logging.warning(f"⚠️ Weight loading error: {e}")
             logging.warning("   Using random weights - expect poor quality")
-    
-    def _download_pretrained_weights(self):
-        """Download RIFE pretrained weights from GitHub."""
-        try:
-            import urllib.request
-            
-            # Try different RIFE model URLs
-            weight_urls = [
-                "https://github.com/megvii-research/ECCV2022-RIFE/releases/download/v4.6/flownet.pkl",
-                "https://github.com/megvii-research/ECCV2022-RIFE/releases/download/v4.0/flownet.pkl",
-            ]
-            
-            for url in weight_urls:
-                try:
-                    logging.info(f"📥 Downloading weights from: {url}")
-                    
-                    weight_path = os.path.join(self.rife_dir, 'flownet.pkl')
-                    urllib.request.urlretrieve(url, weight_path)
-                    
-                    # Try to load downloaded weights
-                    logging.info(f"🔄 Loading downloaded weights...")
-                    import pickle
-                    with open(weight_path, 'rb') as f:
-                        weights = pickle.load(f)
-                    
-                    if hasattr(self.model, 'load_state_dict'):
-                        self.model.load_state_dict(weights, strict=False)
-                    elif hasattr(self.model, 'flownet'):
-                        self.model.flownet.load_state_dict(weights, strict=False)
-                    else:
-                        logging.warning("⚠️ Unknown model structure")
-                        continue
-                    
-                    logging.info("✅ Downloaded RIFE weights loaded successfully!")
-                    return True
-                    
-                except Exception as e:
-                    logging.warning(f"⚠️ Failed to download/load from {url}: {e}")
-                    continue
-            
-            return False
-            
-        except Exception as e:
-            logging.warning(f"⚠️ Weight download failed: {e}")
-            return False
     
     def interpolate_frames(self, frame1, frame2, num_intermediate=1):
         """Interpolate frames using REAL RIFE."""
