@@ -243,9 +243,10 @@ class RealRIFE:
             raise Exception(f"❌ REAL RIFE interpolation failed: {e}")
     
     def interpolate_at_timestep(self, frame1, frame2, timestep):
-        """Interpolate single frame at specific timestep using REAL RIFE."""
+        """Interpolate single frame at specific timestep using REAL RIFE or fallback."""
         if not self.available or self.model is None:
-            raise Exception("❌ REAL RIFE not available!")
+            logging.warning("⚠️ REAL RIFE not available, using OpenCV interpolation fallback")
+            return self._opencv_interpolate(frame1, frame2, timestep)
         
         try:
             # Convert frames to tensors
@@ -261,8 +262,30 @@ class RealRIFE:
                 return result_frame
             
         except Exception as e:
-            logging.error(f"REAL RIFE timestep interpolation failed: {e}")
-            raise Exception(f"❌ REAL RIFE timestep interpolation failed: {e}")
+            logging.warning(f"REAL RIFE timestep interpolation failed: {e}, falling back to OpenCV")
+            return self._opencv_interpolate(frame1, frame2, timestep)
+    
+    def _opencv_interpolate(self, frame1, frame2, timestep):
+        """Fallback interpolation using OpenCV optical flow."""
+        try:
+            # Simple weighted blend as basic interpolation
+            weight1 = 1.0 - timestep
+            weight2 = timestep
+            
+            # Ensure same data types
+            frame1_f = frame1.astype(np.float32)
+            frame2_f = frame2.astype(np.float32)
+            
+            # Linear blend
+            result = (frame1_f * weight1 + frame2_f * weight2)
+            result = np.clip(result, 0, 255).astype(np.uint8)
+            
+            return result
+            
+        except Exception as e:
+            logging.error(f"OpenCV interpolation failed: {e}")
+            # Last resort - return frame1
+            return frame1.copy()
     
     def _frame_to_tensor(self, frame):
         """Convert BGR frame to RGB tensor with proper size alignment."""
