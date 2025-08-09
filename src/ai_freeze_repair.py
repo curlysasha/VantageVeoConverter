@@ -135,25 +135,20 @@ def interpolate_with_rife(prev_frame, next_frame, rife_model):
         
         logging.info(f"     RIFE model: {rife_model.method}, device: {rife_model.device}")
         
-        # Convert frames to tensors
-        prev_tensor = frame_to_tensor(prev_frame, rife_model.device)
-        next_tensor = frame_to_tensor(next_frame, rife_model.device)
-        
-        logging.info(f"     Tensors shape: {prev_tensor.shape}, {next_tensor.shape}")
-        
-        # Interpolate middle frame (timestep=0.5)
-        with torch.no_grad():
-            if hasattr(rife_model, 'interpolate'):
-                interpolated_tensor = rife_model.interpolate(prev_tensor, next_tensor, 0.5)
+        # Use RIFE's interpolate_frames method directly (no tensor conversion needed)
+        if hasattr(rife_model, 'interpolate_frames'):
+            # Use RIFE's interpolate_frames method (returns list)
+            interpolated_frames = rife_model.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
+            if interpolated_frames and len(interpolated_frames) > 0:
+                result_frame = interpolated_frames[0]  # Return first interpolated frame
+                logging.info(f"     Interpolation successful, output shape: {result_frame.shape}")
+                return result_frame
             else:
-                logging.error("     RIFE model has no 'interpolate' method")
+                logging.error("     RIFE interpolate_frames returned empty list")
                 return None
-            
-        # Convert back to frame
-        interpolated_frame = tensor_to_frame(interpolated_tensor)
-        
-        logging.info(f"     Interpolation successful, output shape: {interpolated_frame.shape}")
-        return interpolated_frame
+        else:
+            logging.error("     RIFE model has no 'interpolate_frames' method")
+            return None
         
     except Exception as e:
         logging.error(f"     RIFE interpolation error: {e}")
@@ -161,31 +156,6 @@ def interpolate_with_rife(prev_frame, next_frame, rife_model):
         traceback.print_exc()
         return None
 
-def frame_to_tensor(frame, device):
-    """Convert OpenCV frame to RIFE tensor format."""
-    # Convert BGR to RGB
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    
-    # Normalize to [0, 1]
-    frame_float = frame_rgb.astype(np.float32) / 255.0
-    
-    # Convert to tensor (C, H, W)
-    tensor = torch.from_numpy(frame_float.transpose(2, 0, 1)).unsqueeze(0).to(device)
-    
-    return tensor
-
-def tensor_to_frame(tensor):
-    """Convert RIFE tensor back to OpenCV frame."""
-    # Convert to numpy (H, W, C)
-    frame_np = tensor.squeeze(0).cpu().numpy().transpose(1, 2, 0)
-    
-    # Denormalize to [0, 255]
-    frame_np = (frame_np * 255.0).clip(0, 255).astype(np.uint8)
-    
-    # Convert RGB back to BGR for OpenCV
-    frame_bgr = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
-    
-    return frame_bgr
 
 def create_ai_repair_report(repaired_count, total_freezes):
     """Create detailed repair report."""
