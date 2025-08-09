@@ -119,6 +119,28 @@ class RealRIFE:
             logging.error(f"REAL RIFE interpolation failed: {e}")
             raise Exception(f"❌ REAL RIFE interpolation failed: {e}")
     
+    def interpolate_at_timestep(self, frame1, frame2, timestep):
+        """Interpolate single frame at specific timestep using REAL RIFE."""
+        if not self.available or self.model is None:
+            raise Exception("❌ REAL RIFE not available!")
+        
+        try:
+            # Convert frames to tensors
+            tensor1 = self._frame_to_tensor(frame1)
+            tensor2 = self._frame_to_tensor(frame2)
+            
+            with torch.no_grad():
+                # Run RIFE inference with custom timestep
+                result_tensor = self.model.inference(tensor1, tensor2, timestep)
+                
+                # Convert back to frame
+                result_frame = self._tensor_to_frame(result_tensor)
+                return result_frame
+            
+        except Exception as e:
+            logging.error(f"REAL RIFE timestep interpolation failed: {e}")
+            raise Exception(f"❌ REAL RIFE timestep interpolation failed: {e}")
+    
     def _frame_to_tensor(self, frame):
         """Convert BGR frame to RGB tensor with proper size alignment."""
         # BGR to RGB
