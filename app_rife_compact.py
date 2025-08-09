@@ -233,24 +233,21 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             progress(0.75, desc="6/7: Creating synchronized video...")
             retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
             
-            # Add diagnostic markers to synchronized video
-            progress(0.85, desc="7/7: Adding diagnostic markers...")
-            marked_frames, report = create_simple_diagnostic(
-                paths["retimed_video"],  # Use the synchronized video with freezes!
-                diag_output_path        # Add red markers to it
-            )
+            # Just copy the synchronized video as diagnostic result
+            progress(0.85, desc="7/7: Copying synchronized video for review...")
+            import shutil
+            shutil.copy2(paths["retimed_video"], diag_output_path)
             
             duration = time.time() - start_time
             
-            # Status message
-            status_msg = f"""🔍 DIAGNOSTIC ANALYSIS COMPLETE!
+            # Status message  
+            status_msg = f"""🔍 DIAGNOSTIC: SYNCHRONIZED VIDEO (NO MARKERS YET)
 Processing time: {duration:.2f} seconds
-Mode: {rife_mode}
 
-{report}
+This is the synchronized video with freezes from timing corrections.
+Compare this to your original to see where freezes appear.
 
-Watch the diagnostic video to see which frames were detected as problematic.
-Red frames = detected issues that would be interpolated."""
+TODO: Add red markers to frozen frames."""
             
             return diag_output_path, status_msg
     
