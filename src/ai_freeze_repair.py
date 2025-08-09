@@ -27,6 +27,7 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             frames_to_repair.add(pred['frame'])
     
     logging.info(f"Will repair {len(frames_to_repair)} frozen frames")
+    logging.info(f"Frames to repair: {sorted(list(frames_to_repair))[:10]}...")  # Show first 10
     
     # Open input video
     cap = cv2.VideoCapture(video_path)
@@ -63,19 +64,20 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             prev_frame, next_frame = find_neighbor_frames(all_frames, frame_idx, frames_to_repair)
             
             if prev_frame is not None and next_frame is not None:
+                logging.info(f"   Repairing frame {frame_idx}, neighbors found")
                 # Use RIFE to interpolate
                 try:
                     interpolated = interpolate_with_rife(prev_frame, next_frame, rife_model)
                     if interpolated is not None:
                         current_frame = interpolated
                         repaired_count += 1
-                        logging.info(f"   Repaired frame {frame_idx} using RIFE")
+                        logging.info(f"   ✅ Successfully repaired frame {frame_idx} using RIFE")
                     else:
-                        logging.warning(f"   RIFE failed for frame {frame_idx}, using original")
+                        logging.warning(f"   ❌ RIFE returned None for frame {frame_idx}, using original")
                 except Exception as e:
-                    logging.warning(f"   RIFE error for frame {frame_idx}: {e}")
+                    logging.error(f"   ❌ RIFE error for frame {frame_idx}: {e}")
             else:
-                logging.warning(f"   Cannot find neighbors for frame {frame_idx}")
+                logging.warning(f"   ❌ Cannot find neighbors for frame {frame_idx} - skipping repair")
         
         out.write(current_frame)
         
@@ -97,18 +99,24 @@ def find_neighbor_frames(all_frames, target_idx, frozen_frames):
     """
     prev_frame = None
     next_frame = None
+    prev_idx = -1
+    next_idx = -1
     
     # Поиск предыдущего незамороженного кадра
     for i in range(target_idx - 1, -1, -1):
         if i not in frozen_frames:
             prev_frame = all_frames[i]
+            prev_idx = i
             break
     
     # Поиск следующего незамороженного кадра  
     for i in range(target_idx + 1, len(all_frames)):
         if i not in frozen_frames:
             next_frame = all_frames[i]
+            next_idx = i
             break
+    
+    logging.info(f"     Target: {target_idx}, Prev: {prev_idx}, Next: {next_idx}")
     
     return prev_frame, next_frame
 
@@ -117,25 +125,40 @@ def interpolate_with_rife(prev_frame, next_frame, rife_model):
     Интерполировать один кадр между двумя с помощью RIFE.
     """
     try:
-        if not rife_model or not rife_model.available:
-            logging.warning("RIFE model not available")
+        if not rife_model:
+            logging.warning("     RIFE model is None")
             return None
+            
+        if not hasattr(rife_model, 'available') or not rife_model.available:
+            logging.warning(f"     RIFE model not available: {getattr(rife_model, 'available', 'No available attr')}")
+            return None
+        
+        logging.info(f"     RIFE model: {rife_model.method}, device: {rife_model.device}")
         
         # Convert frames to tensors
         prev_tensor = frame_to_tensor(prev_frame, rife_model.device)
         next_tensor = frame_to_tensor(next_frame, rife_model.device)
         
+        logging.info(f"     Tensors shape: {prev_tensor.shape}, {next_tensor.shape}")
+        
         # Interpolate middle frame (timestep=0.5)
         with torch.no_grad():
-            interpolated_tensor = rife_model.interpolate(prev_tensor, next_tensor, 0.5)
+            if hasattr(rife_model, 'interpolate'):
+                interpolated_tensor = rife_model.interpolate(prev_tensor, next_tensor, 0.5)
+            else:
+                logging.error("     RIFE model has no 'interpolate' method")
+                return None
             
         # Convert back to frame
         interpolated_frame = tensor_to_frame(interpolated_tensor)
         
+        logging.info(f"     Interpolation successful, output shape: {interpolated_frame.shape}")
         return interpolated_frame
         
     except Exception as e:
-        logging.error(f"RIFE interpolation error: {e}")
+        logging.error(f"     RIFE interpolation error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def frame_to_tensor(frame, device):
