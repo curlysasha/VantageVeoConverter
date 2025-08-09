@@ -130,128 +130,16 @@ def interpolate_with_real_rife(prev_frame, next_frame, real_rife):
     Интерполировать один кадр между двумя используя НАСТОЯЩИЙ RIFE из оригинального репозитория.
     """
     try:
-        # Use REAL RIFE from official ECCV2022-RIFE repository
         if real_rife and real_rife.available:
-            try:
-                interpolated_frames = real_rife.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
-                if interpolated_frames and len(interpolated_frames) > 0:
-                    logging.info("     ✅ REAL RIFE interpolation successful")
-                    return interpolated_frames[0]
-                else:
-                    logging.warning("     REAL RIFE returned empty result")
-            except Exception as rife_error:
-                logging.warning(f"     REAL RIFE failed: {rife_error}")
+            interpolated_frames = real_rife.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
+            if interpolated_frames and len(interpolated_frames) > 0:
+                return interpolated_frames[0]
         
-        # NO FALLBACKS!
-        raise Exception("❌ REAL RIFE not available! NO FALLBACKS!")
+        raise Exception("❌ REAL RIFE not available!")
         
     except Exception as e:
-        logging.error(f"     REAL RIFE interpolation failed: {e}")
-        raise Exception("❌ REAL RIFE interpolation failed! NO FALLBACKS!")
-
-def improved_optical_flow_interpolation(frame1, frame2):
-    """
-    Improved optical flow interpolation with better warping.
-    """
-    try:
-        # Convert to grayscale for optical flow
-        gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-        gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-        
-        # Calculate dense optical flow using Farneback method
-        flow = cv2.calcOpticalFlowFarneback(
-            gray1, gray2, None, 0.5, 3, 15, 3, 5, 1.2, 0
-        )
-        
-        h, w = frame1.shape[:2]
-        
-        # Create interpolation map for middle frame (t=0.5)
-        flow_half = flow * 0.5
-        
-        # Create coordinate maps
-        x, y = np.meshgrid(np.arange(w), np.arange(h))
-        coords = np.float32(np.dstack([x + flow_half[..., 0], y + flow_half[..., 1]]))
-        
-        # Warp frame1 towards middle position
-        warped_frame1 = cv2.remap(frame1, coords, None, cv2.INTER_LINEAR)
-        
-        # Create backward flow and warp frame2
-        coords_back = np.float32(np.dstack([x - flow_half[..., 0], y - flow_half[..., 1]]))
-        warped_frame2 = cv2.remap(frame2, coords_back, None, cv2.INTER_LINEAR)
-        
-        # Blend warped frames
-        intermediate = cv2.addWeighted(warped_frame1, 0.5, warped_frame2, 0.5, 0)
-        
-        # Add slight gaussian blur to smooth out artifacts
-        intermediate = cv2.GaussianBlur(intermediate, (3, 3), 0.5)
-        
-        return intermediate
-        
-    except Exception as e:
-        logging.warning(f"Improved optical flow failed: {e}")
-        return improved_blending(frame1, frame2)
-
-def improved_blending(frame1, frame2):
-    """
-    Improved blending with edge enhancement.
-    """
-    try:
-        # Standard weighted blend
-        blended = cv2.addWeighted(frame1, 0.5, frame2, 0.5, 0)
-        
-        # Detect edges in both frames
-        gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-        gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-        
-        edges1 = cv2.Canny(gray1, 50, 150)
-        edges2 = cv2.Canny(gray2, 50, 150)
-        
-        # Combine edges
-        combined_edges = cv2.bitwise_or(edges1, edges2)
-        
-        # Create edge mask
-        edge_mask = combined_edges.astype(np.float32) / 255.0
-        edge_mask = cv2.GaussianBlur(edge_mask, (3, 3), 0.5)
-        
-        # Apply edge-aware blending
-        edge_mask_3ch = np.stack([edge_mask] * 3, axis=-1)
-        
-        # Enhance edges in the blend
-        enhanced = blended.astype(np.float32)
-        edge_enhancement = (frame1.astype(np.float32) + frame2.astype(np.float32)) * 0.5
-        
-        # Blend with edge enhancement
-        result = enhanced * (1 - edge_mask_3ch * 0.3) + edge_enhancement * (edge_mask_3ch * 0.3)
-        
-        return np.clip(result, 0, 255).astype(np.uint8)
-        
-    except Exception as e:
-        logging.warning(f"Improved blending failed: {e}")
-        return cv2.addWeighted(frame1, 0.5, frame2, 0.5, 0)
-
-def slightly_modify_frame(frame):
-    """
-    Slightly modify frame instead of blending - last resort that's not blending.
-    """
-    try:
-        # Apply subtle modifications to make frame look different
-        modified = frame.copy()
-        
-        # Add very slight gaussian noise
-        noise = np.random.normal(0, 2, frame.shape).astype(np.int16)
-        modified = np.clip(modified.astype(np.int16) + noise, 0, 255).astype(np.uint8)
-        
-        # Apply very slight gaussian blur 
-        modified = cv2.GaussianBlur(modified, (3, 3), 0.3)
-        
-        # Slight brightness adjustment
-        modified = np.clip(modified.astype(np.int16) + 2, 0, 255).astype(np.uint8)
-        
-        return modified
-        
-    except Exception as e:
-        logging.error(f"Frame modification failed: {e}")
-        return frame
+        logging.error(f"REAL RIFE interpolation failed: {e}")
+        raise Exception(f"❌ REAL RIFE interpolation failed: {e}")
 
 def create_ai_repair_report(repaired_count, total_freezes):
     """Create detailed repair report."""
