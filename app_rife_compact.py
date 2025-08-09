@@ -164,8 +164,32 @@ def synchronization_workflow(input_video_path, target_audio_path, use_rife=True,
                         synchronized_video_with_audio, freeze_predictions, paths["interpolated_video"], RIFE_MODEL
                     )
                     if interpolation_applied:
-                        # Use AI-repaired video for final output
-                        video_for_final_mux = paths["interpolated_video"]
+                        # RIFE created video WITHOUT audio, need to add audio back
+                        progress(0.85, desc="7/8: Adding audio to AI-repaired video...")
+                        paths["interpolated_with_audio"] = os.path.join(temp_dir, "interpolated_with_audio.mp4") 
+                        try:
+                            # Add audio from synchronized video (same as diagnostic)
+                            cmd = [
+                                'ffmpeg', '-y',
+                                '-i', paths["interpolated_video"],      # RIFE video (no audio)
+                                '-i', synchronized_video_with_audio,   # Audio source
+                                '-c:v', 'copy',                        # Copy video as-is
+                                '-c:a', 'aac',                        # AAC audio codec
+                                '-b:a', '128k',                       # Audio bitrate
+                                '-map', '0:v:0',                      # Take video from RIFE
+                                '-map', '1:a:0?',                     # Take audio from synchronized
+                                '-shortest',                          # End when shortest ends
+                                paths["interpolated_with_audio"]
+                            ]
+                            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                            if result.returncode == 0:
+                                video_for_final_mux = paths["interpolated_with_audio"]
+                            else:
+                                logging.warning(f"Audio addition failed: {result.stderr}")
+                                video_for_final_mux = synchronized_video_with_audio
+                        except Exception as e:
+                            logging.warning(f"Audio processing error: {e}")
+                            video_for_final_mux = synchronized_video_with_audio
                     else:
                         # RIFE failed, use synchronized video with audio
                         video_for_final_mux = synchronized_video_with_audio

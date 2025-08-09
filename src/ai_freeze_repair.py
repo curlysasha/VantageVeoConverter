@@ -170,19 +170,14 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     logging.info(f"🎬 Creating video from {written_frames} frames using FFmpeg...")
     
     try:
-        # Create video with audio from original video
+        # Create video WITHOUT audio - exactly like diagnostic mode
         ffmpeg_cmd = [
             'ffmpeg', '-y',
             '-framerate', str(fps),
             '-i', os.path.join(frames_dir, 'frame_%06d.png'),
-            '-i', video_path,  # Add original video as audio source
             '-c:v', 'libx264',
-            '-c:a', 'copy',    # Copy audio stream from original
-            '-pix_fmt', 'yuv420p', 
-            '-crf', '18',      # High quality
-            '-map', '0:v:0',  # Take video from frames
-            '-map', '1:a:0?', # Take audio from original (optional)
-            '-shortest',       # End when shortest stream ends
+            '-pix_fmt', 'yuv420p',
+            '-crf', '18',  # High quality
             temp_output_path
         ]
         
