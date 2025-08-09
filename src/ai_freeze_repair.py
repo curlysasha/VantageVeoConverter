@@ -46,9 +46,9 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     freeze_percentage = (len(frames_to_repair) / total_frames) * 100
     logging.info(f"Freeze coverage: {freeze_percentage:.1f}% of video ({len(frames_to_repair)}/{total_frames} frames)")
     
-    # If more than 80% of video is marked as frozen, probably false detection
-    if freeze_percentage > 80:
-        logging.warning("⚠️ Over 80% of video marked as frozen - likely false detection!")
+    # If more than 95% of video is marked as frozen, probably false detection
+    if freeze_percentage > 95:
+        logging.warning("⚠️ Over 95% of video marked as frozen - likely false detection!")
         logging.warning("⚠️ This usually means the video doesn't need RIFE repair.")
         logging.info("Copying original video without changes...")
         import shutil
