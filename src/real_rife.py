@@ -117,8 +117,19 @@ class RealRIFE:
                     try:
                         if weight_path.endswith('.pkl'):
                             import pickle
-                            with open(weight_path, 'rb') as f:
-                                weights = pickle.load(f)
+                            # Try different pickle loading approaches
+                            try:
+                                with open(weight_path, 'rb') as f:
+                                    weights = pickle.load(f)
+                            except Exception as e1:
+                                logging.warning(f"   Standard pickle load failed: {e1}")
+                                # Try with torch.load which can handle torch tensors better
+                                try:
+                                    weights = torch.load(weight_path, map_location=self.device, pickle_module=pickle)
+                                except Exception as e2:
+                                    logging.warning(f"   Torch pickle load failed: {e2}")
+                                    # Try with encoding fix
+                                    weights = torch.load(weight_path, map_location=self.device, encoding='latin1')
                         else:
                             weights = torch.load(weight_path, map_location=self.device)
                         
