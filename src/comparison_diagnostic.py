@@ -102,35 +102,63 @@ def create_comparison_diagnostic(synchronized_video_path, output_path):
     
     # Add audio from original synchronized video using ffmpeg
     logging.info("🔊 Adding audio track to diagnostic video...")
+    
+    # First, check if source video has audio
+    audio_check_cmd = ['ffprobe', '-v', 'quiet', '-select_streams', 'a', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', synchronized_video_path]
+    
     try:
-        cmd = [
-            'ffmpeg', '-y',  # Overwrite output file
-            '-i', temp_video_path,  # Video input
-            '-i', synchronized_video_path,  # Audio source
-            '-c:v', 'copy',  # Copy video stream as-is
-            '-c:a', 'aac',  # Use AAC audio codec
-            '-map', '0:v:0',  # Take video from first input
-            '-map', '1:a:0',  # Take audio from second input
-            '-shortest',  # End when shortest stream ends
-            output_path
-        ]
+        audio_check = subprocess.run(audio_check_cmd, capture_output=True, text=True, timeout=30)
+        has_audio = bool(audio_check.stdout.strip())
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        
-        if result.returncode == 0:
-            logging.info("✅ Audio added successfully")
-            # Clean up temporary file
-            if os.path.exists(temp_video_path):
-                os.remove(temp_video_path)
-        else:
-            logging.warning(f"⚠️ Audio addition failed: {result.stderr}")
-            logging.info("📝 Using video-only diagnostic file")
-            # Rename temp file to final output if ffmpeg failed
+        if not has_audio:
+            logging.warning("⚠️ Source video has no audio track")
+            # Rename temp file to final output
             if os.path.exists(temp_video_path):
                 os.rename(temp_video_path, output_path)
-                
+        else:
+            logging.info(f"✅ Source video has audio: {audio_check.stdout.strip()}")
+            
+            # Build ffmpeg command
+            cmd = [
+                'ffmpeg', '-y',  # Overwrite output file
+                '-i', temp_video_path,  # Video input
+                '-i', synchronized_video_path,  # Audio source
+                '-c:v', 'copy',  # Copy video stream as-is
+                '-c:a', 'aac',  # Use AAC audio codec
+                '-map', '0:v:0',  # Take video from first input
+                '-map', '1:a:0',  # Take audio from second input
+                '-shortest',  # End when shortest stream ends
+                output_path
+            ]
+            
+            logging.info(f"🔧 FFmpeg command: {' '.join(cmd)}")
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            
+            if result.returncode == 0:
+                logging.info("✅ Audio added successfully")
+                # Clean up temporary file
+                if os.path.exists(temp_video_path):
+                    os.remove(temp_video_path)
+            else:
+                logging.error(f"❌ FFmpeg failed with return code {result.returncode}")
+                logging.error(f"STDOUT: {result.stdout}")
+                logging.error(f"STDERR: {result.stderr}")
+                logging.info("📝 Using video-only diagnostic file")
+                # Rename temp file to final output if ffmpeg failed
+                if os.path.exists(temp_video_path):
+                    os.rename(temp_video_path, output_path)
+                    
+    except subprocess.TimeoutExpired:
+        logging.error("❌ FFmpeg timeout")
+        if os.path.exists(temp_video_path):
+            os.rename(temp_video_path, output_path)
+    except FileNotFoundError:
+        logging.error("❌ FFmpeg not found! Please install ffmpeg")
+        if os.path.exists(temp_video_path):
+            os.rename(temp_video_path, output_path)
     except Exception as e:
-        logging.warning(f"⚠️ Audio processing error: {e}")
+        logging.error(f"❌ Audio processing error: {e}")
         logging.info("📝 Using video-only diagnostic file")
         # Rename temp file to final output if audio processing failed
         if os.path.exists(temp_video_path):
