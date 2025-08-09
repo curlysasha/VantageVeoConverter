@@ -22,6 +22,7 @@ from src.comparison import create_comparison_grid
 from src.diagnostic_visualizer import create_diagnostic_video
 from src.simple_diagnostic import create_simple_diagnostic
 from src.comparison_diagnostic import create_comparison_diagnostic
+from src.physical_retime import create_physical_retime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -230,9 +231,9 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
                 smooth_interpolation=True
             )
             
-            # Create retimed video (same as regular sync)
-            progress(0.75, desc="6/7: Creating synchronized video...")
-            retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
+            # Create physically retimed video with ACTUAL frame duplicates
+            progress(0.75, desc="6/7: Creating video with physical frame duplicates...")
+            create_physical_retime(input_video_path, paths["timecodes"], paths["retimed_video"])
             
             # Create side-by-side comparison showing synchronized video with freeze markers
             progress(0.85, desc="7/7: Creating side-by-side freeze comparison...")
