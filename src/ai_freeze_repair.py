@@ -127,74 +127,107 @@ def find_neighbor_frames(all_frames, target_idx, frozen_frames):
 
 def interpolate_with_real_rife(prev_frame, next_frame, real_rife, rife_model):
     """
-    Интерполировать один кадр между двумя с помощью улучшенного метода.
-    Сначала пробует Real RIFE, затем enhanced_cv, затем простое смешивание.
+    Интерполировать один кадр между двумя - использует ТОЛЬКО Enhanced CV метод.
+    Отключен Real RIFE из-за проблем с модулями.
     """
     try:
-        # Try Real RIFE first
-        if real_rife and real_rife.available:
-            try:
-                interpolated_frames = real_rife.interpolate_frames(prev_frame, next_frame)
-                if interpolated_frames and len(interpolated_frames) > 0:
-                    result_frame = interpolated_frames[0]
-                    logging.info(f"     ✅ Real RIFE interpolation successful, shape: {result_frame.shape}")
-                    return result_frame
-            except Exception as rife_error:
-                logging.warning(f"     Real RIFE failed: {rife_error}")
-        
-        # Fallback to enhanced interpolation (better than simple blending)
+        # Skip problematic Real RIFE, use Enhanced CV directly
         if rife_model and hasattr(rife_model, 'interpolate_frames'):
             try:
                 interpolated_frames = rife_model.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
                 if interpolated_frames and len(interpolated_frames) > 0:
-                    logging.info("     ✅ Enhanced interpolation successful")
+                    logging.info("     ✅ Enhanced CV interpolation successful")
                     return interpolated_frames[0]
             except Exception as enhanced_error:
                 logging.warning(f"     Enhanced interpolation failed: {enhanced_error}")
         
-        # Ultimate fallback - optical flow based interpolation (better than blending)
-        logging.info("     Using optical flow fallback")
-        return optical_flow_interpolation(prev_frame, next_frame)
+        # Fallback to improved optical flow interpolation
+        logging.info("     Using improved optical flow fallback")
+        return improved_optical_flow_interpolation(prev_frame, next_frame)
         
     except Exception as e:
         logging.error(f"     All interpolation methods failed: {e}")
-        # Last resort - simple blending
-        return cv2.addWeighted(prev_frame, 0.5, next_frame, 0.5, 0)
+        # Last resort - improved blending with motion blur
+        return improved_blending(prev_frame, next_frame)
 
-def optical_flow_interpolation(frame1, frame2):
+def improved_optical_flow_interpolation(frame1, frame2):
     """
-    Better fallback using optical flow instead of simple blending.
+    Improved optical flow interpolation with better warping.
     """
     try:
         # Convert to grayscale for optical flow
         gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
         gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
         
-        # Calculate dense optical flow
-        flow = cv2.calcOpticalFlowPyrLK(
-            gray1, gray2,
-            cv2.goodFeaturesToTrack(gray1, maxCorners=100, qualityLevel=0.01, minDistance=10),
-            None
-        )[0]
+        # Calculate dense optical flow using Farneback method
+        flow = cv2.calcOpticalFlowFarneback(
+            gray1, gray2, None, 0.5, 3, 15, 3, 5, 1.2, 0
+        )
         
-        if flow is not None and len(flow) > 5:
-            # Create intermediate frame using flow information
-            h, w = frame1.shape[:2]
-            
-            # Simple approach: blend with slight motion compensation
-            # This is better than pure blending but not as good as real optical flow warping
-            intermediate = cv2.addWeighted(frame1, 0.5, frame2, 0.5, 0)
-            
-            # Add slight blur for motion smoothing
-            intermediate = cv2.GaussianBlur(intermediate, (3, 3), 0.5)
-            
-            return intermediate
-        else:
-            # No flow detected, use simple blending
-            return cv2.addWeighted(frame1, 0.5, frame2, 0.5, 0)
-            
+        h, w = frame1.shape[:2]
+        
+        # Create interpolation map for middle frame (t=0.5)
+        flow_half = flow * 0.5
+        
+        # Create coordinate maps
+        x, y = np.meshgrid(np.arange(w), np.arange(h))
+        coords = np.float32(np.dstack([x + flow_half[..., 0], y + flow_half[..., 1]]))
+        
+        # Warp frame1 towards middle position
+        warped_frame1 = cv2.remap(frame1, coords, None, cv2.INTER_LINEAR)
+        
+        # Create backward flow and warp frame2
+        coords_back = np.float32(np.dstack([x - flow_half[..., 0], y - flow_half[..., 1]]))
+        warped_frame2 = cv2.remap(frame2, coords_back, None, cv2.INTER_LINEAR)
+        
+        # Blend warped frames
+        intermediate = cv2.addWeighted(warped_frame1, 0.5, warped_frame2, 0.5, 0)
+        
+        # Add slight gaussian blur to smooth out artifacts
+        intermediate = cv2.GaussianBlur(intermediate, (3, 3), 0.5)
+        
+        return intermediate
+        
     except Exception as e:
-        logging.warning(f"Optical flow interpolation failed: {e}")
+        logging.warning(f"Improved optical flow failed: {e}")
+        return improved_blending(frame1, frame2)
+
+def improved_blending(frame1, frame2):
+    """
+    Improved blending with edge enhancement.
+    """
+    try:
+        # Standard weighted blend
+        blended = cv2.addWeighted(frame1, 0.5, frame2, 0.5, 0)
+        
+        # Detect edges in both frames
+        gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+        gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+        
+        edges1 = cv2.Canny(gray1, 50, 150)
+        edges2 = cv2.Canny(gray2, 50, 150)
+        
+        # Combine edges
+        combined_edges = cv2.bitwise_or(edges1, edges2)
+        
+        # Create edge mask
+        edge_mask = combined_edges.astype(np.float32) / 255.0
+        edge_mask = cv2.GaussianBlur(edge_mask, (3, 3), 0.5)
+        
+        # Apply edge-aware blending
+        edge_mask_3ch = np.stack([edge_mask] * 3, axis=-1)
+        
+        # Enhance edges in the blend
+        enhanced = blended.astype(np.float32)
+        edge_enhancement = (frame1.astype(np.float32) + frame2.astype(np.float32)) * 0.5
+        
+        # Blend with edge enhancement
+        result = enhanced * (1 - edge_mask_3ch * 0.3) + edge_enhancement * (edge_mask_3ch * 0.3)
+        
+        return np.clip(result, 0, 255).astype(np.uint8)
+        
+    except Exception as e:
+        logging.warning(f"Improved blending failed: {e}")
         return cv2.addWeighted(frame1, 0.5, frame2, 0.5, 0)
 
 
