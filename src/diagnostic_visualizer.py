@@ -13,8 +13,11 @@ def create_diagnostic_video(input_video_path, output_path, timecode_path, rife_m
     """
     logging.info("🔍 Starting diagnostic video creation...")
     
-    # Get problem segments
-    problem_segments = analyze_timing_changes(timecode_path, rife_mode=rife_mode, video_path=input_video_path)
+    # Force diagnostic mode if rife_mode is off
+    detection_mode = "diagnostic" if rife_mode == "off" or rife_mode == "diagnostic" else rife_mode
+    
+    # Get problem segments with diagnostic sensitivity
+    problem_segments = analyze_timing_changes(timecode_path, rife_mode=detection_mode, video_path=input_video_path)
     
     if not problem_segments:
         logging.warning("No problem segments detected!")

@@ -227,13 +227,13 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
                 smooth_interpolation=True
             )
             
-            # Create diagnostic video
-            progress(0.8, desc=f"6/6: Creating diagnostic visualization ({rife_mode} mode)...")
+            # Create diagnostic video - always use diagnostic mode for ultra-sensitive detection
+            progress(0.8, desc="6/6: Creating diagnostic visualization (ultra-sensitive mode)...")
             marked_frames, report = create_diagnostic_video(
                 input_video_path,
                 diag_output_path,
                 paths["timecodes"],
-                rife_mode=rife_mode
+                rife_mode="diagnostic"  # Always use diagnostic mode for visualization
             )
             
             duration = time.time() - start_time
@@ -438,6 +438,7 @@ with gr.Blocks(title="Enhanced Video-Audio Synchronizer with RIFE") as interface
             gr.Markdown("---")
             gr.Markdown("### 🔍 Diagnostic Mode")
             gr.Markdown("Visualize detected problem frames without interpolation")
+            gr.Markdown("**Note:** Uses ultra-sensitive detection to catch ALL potential issues")
             
             diagnostic_button = gr.Button("🔍 Run Diagnostic (Show Problem Frames)", variant="secondary")
             

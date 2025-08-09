@@ -19,13 +19,19 @@ def analyze_timing_changes(timecode_path, fps=25, rife_mode="off", video_path=No
     elif rife_mode == "maximum":
         logging.info("Maximum mode: will interpolate entire video")
         return [{'start_frame': 0, 'end_frame': len(timestamps), 'reason': 'maximum', 'type': 'full_video'}]
+    elif rife_mode == "diagnostic":
+        logging.info("Diagnostic mode: using ultra-sensitive detection")
+        # Continue with diagnostic detection below
     
     # Analyze frame duplication and timing irregularities
     original_interval = 1000 / fps  # Expected interval in ms
     problem_segments = []
     
     # Different sensitivity thresholds
-    if rife_mode == "precision":
+    if rife_mode == "diagnostic":
+        threshold = 0.01  # 1% deviation - ULTRA sensitive for diagnostic
+        merge_distance = 10  # Large merge distance to catch all related issues
+    elif rife_mode == "precision":
         threshold = 0.05  # 5% deviation - very sensitive
         merge_distance = 2  # Smaller merge distance for precision
     else:  # adaptive
@@ -181,7 +187,12 @@ def detect_visual_duplicates_from_video(video_path, mode="adaptive"):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     # Adaptive thresholds based on mode
-    if mode == "precision":
+    if mode == "diagnostic":
+        # Ultra-sensitive mode for diagnostic visualization
+        pixel_threshold = 0.10      # 10% pixel difference max - very lenient
+        structural_threshold = 0.90 # 90% structural similarity min - catches more
+        check_distance = 10         # Check up to 10 frames back
+    elif mode == "precision":
         pixel_threshold = 0.02      # 2% pixel difference max
         structural_threshold = 0.98 # 98% structural similarity min
         check_distance = 2
