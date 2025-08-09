@@ -233,13 +233,12 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
             
             # Create diagnostic video - analyze the RETIMED video for problems!
-            progress(0.85, desc="7/7: Analyzing RETIMED video for freezes...")
+            progress(0.85, desc="7/7: Marking freezes in RETIMED video...")
             marked_frames, report = create_diagnostic_video(
-                input_video_path,
+                paths["retimed_video"],  # Analyze the RETIMED video with freezes!
                 diag_output_path,
                 paths["timecodes"],
-                rife_mode="diagnostic",  # Always use diagnostic mode for visualization
-                retimed_video_path=paths["retimed_video"]  # Pass the retimed video!
+                rife_mode="diagnostic"  # Always use diagnostic mode for visualization
             )
             
             duration = time.time() - start_time

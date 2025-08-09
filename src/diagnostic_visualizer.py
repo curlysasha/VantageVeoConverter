@@ -6,33 +6,25 @@ import numpy as np
 import logging
 from .timing_analyzer import analyze_timing_changes
 
-def create_diagnostic_video(input_video_path, output_path, timecode_path, rife_mode="adaptive", retimed_video_path=None):
+def create_diagnostic_video(input_video_path, output_path, timecode_path, rife_mode="adaptive"):
     """
     Create diagnostic video with visual markers on problem frames.
-    Helps verify if detection is working correctly.
+    Analyzes the input video (should be the retimed one!) for freezes.
     
     Args:
-        input_video_path: Original input video
+        input_video_path: Video to analyze and mark (should be the RETIMED video)
         output_path: Output diagnostic video path
         timecode_path: Timecodes file path
         rife_mode: Detection mode
-        retimed_video_path: Path to retimed video (if available) - THIS is what we should analyze!
     """
     logging.info("🔍 Starting diagnostic video creation...")
-    
-    # Use retimed video for analysis if available, otherwise use original
-    video_to_analyze = retimed_video_path if retimed_video_path else input_video_path
-    
-    if retimed_video_path:
-        logging.info("📹 Analyzing RETIMED video for problems (this is where freezes appear!)")
-    else:
-        logging.info("⚠️ Analyzing original video (may not show sync issues)")
+    logging.info(f"📹 Analyzing video: {input_video_path}")
     
     # Force diagnostic mode if rife_mode is off
     detection_mode = "diagnostic" if rife_mode == "off" or rife_mode == "diagnostic" else rife_mode
     
-    # Get problem segments with diagnostic sensitivity - analyze the RETIMED video!
-    problem_segments = analyze_timing_changes(timecode_path, rife_mode=detection_mode, video_path=video_to_analyze)
+    # Get problem segments - analyze the input video for freezes
+    problem_segments = analyze_timing_changes(timecode_path, rife_mode=detection_mode, video_path=input_video_path)
     
     if not problem_segments:
         logging.warning("No problem segments detected!")
@@ -57,8 +49,8 @@ def create_diagnostic_video(input_video_path, output_path, timecode_path, rife_m
     logging.info(f"   • Total problem frames: {len(problem_frames)}")
     logging.info(f"   • Frames with detailed issues: {len(frame_issues)}")
     
-    # Open video - use the retimed one for visualization if available
-    cap = cv2.VideoCapture(video_to_analyze)
+    # Open video - this should be the retimed video
+    cap = cv2.VideoCapture(input_video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
