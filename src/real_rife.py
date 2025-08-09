@@ -239,9 +239,24 @@ class RealRIFE:
             raise Exception("❌ REAL RIFE interpolation failed! NO FALLBACKS!")
     
     def _frame_to_tensor(self, frame):
-        """Convert BGR frame to RGB tensor."""
+        """Convert BGR frame to RGB tensor with proper size alignment."""
         # BGR to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # RIFE requires dimensions divisible by 64
+        h, w = frame_rgb.shape[:2]
+        
+        # Calculate padding to make dimensions divisible by 64
+        pad_h = ((h + 63) // 64) * 64 - h
+        pad_w = ((w + 63) // 64) * 64 - w
+        
+        # Pad frame if necessary
+        if pad_h > 0 or pad_w > 0:
+            frame_rgb = cv2.copyMakeBorder(
+                frame_rgb, 0, pad_h, 0, pad_w, 
+                cv2.BORDER_REFLECT_101
+            )
+            logging.debug(f"Padded frame from {h}x{w} to {frame_rgb.shape[0]}x{frame_rgb.shape[1]}")
         
         # Normalize to [0, 1]
         tensor = torch.from_numpy(frame_rgb).float() / 255.0
