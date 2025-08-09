@@ -6,6 +6,7 @@ import numpy as np
 import logging
 import torch
 from .timecode_freeze_predictor import predict_freezes_from_timecodes
+from .real_rife_interpolator import RealRIFEInterpolator
 
 def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_model):
     """
@@ -122,39 +123,41 @@ def find_neighbor_frames(all_frames, target_idx, frozen_frames):
 
 def interpolate_with_rife(prev_frame, next_frame, rife_model):
     """
-    Интерполировать один кадр между двумя с помощью RIFE.
+    Интерполировать один кадр между двумя с помощью НАСТОЯЩЕГО RIFE.
     """
     try:
-        if not rife_model:
-            logging.warning("     RIFE model is None")
-            return None
-            
-        if not hasattr(rife_model, 'available') or not rife_model.available:
-            logging.warning(f"     RIFE model not available: {getattr(rife_model, 'available', 'No available attr')}")
-            return None
+        # Use Real RIFE interpolator
+        real_rife = RealRIFEInterpolator()
         
-        logging.info(f"     RIFE model: {rife_model.method}, device: {rife_model.device}")
+        if not real_rife.available:
+            logging.warning("     Real RIFE not available, using fallback")
+            # Fallback to old model if available
+            if rife_model and hasattr(rife_model, 'interpolate_frames'):
+                interpolated_frames = rife_model.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
+                if interpolated_frames and len(interpolated_frames) > 0:
+                    return interpolated_frames[0]
+            # Ultimate fallback
+            return cv2.addWeighted(prev_frame, 0.5, next_frame, 0.5, 0)
         
-        # Use RIFE's interpolate_frames method directly (no tensor conversion needed)
-        if hasattr(rife_model, 'interpolate_frames'):
-            # Use RIFE's interpolate_frames method (returns list)
-            interpolated_frames = rife_model.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
-            if interpolated_frames and len(interpolated_frames) > 0:
-                result_frame = interpolated_frames[0]  # Return first interpolated frame
-                logging.info(f"     Interpolation successful, output shape: {result_frame.shape}")
-                return result_frame
-            else:
-                logging.error("     RIFE interpolate_frames returned empty list")
-                return None
+        logging.info("     Using Real RIFE (Practical-RIFE) for interpolation")
+        
+        # Use Real RIFE interpolation
+        interpolated_frames = real_rife.interpolate_frames(prev_frame, next_frame)
+        
+        if interpolated_frames and len(interpolated_frames) > 0:
+            result_frame = interpolated_frames[0]
+            logging.info(f"     ✅ Real RIFE interpolation successful, shape: {result_frame.shape}")
+            return result_frame
         else:
-            logging.error("     RIFE model has no 'interpolate_frames' method")
-            return None
+            logging.warning("     Real RIFE returned empty result, using fallback")
+            return cv2.addWeighted(prev_frame, 0.5, next_frame, 0.5, 0)
         
     except Exception as e:
-        logging.error(f"     RIFE interpolation error: {e}")
+        logging.error(f"     Real RIFE interpolation error: {e}")
         import traceback
         traceback.print_exc()
-        return None
+        # Fallback to simple blending
+        return cv2.addWeighted(prev_frame, 0.5, next_frame, 0.5, 0)
 
 
 def create_ai_repair_report(repaired_count, total_freezes):
