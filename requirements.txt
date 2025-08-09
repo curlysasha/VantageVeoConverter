@@ -1,0 +1,30 @@
+# VantageVeoConverter Dependencies
+
+# Core libraries
+numpy>=1.24,<2.3
+torch>=1.12.0
+torchvision>=0.13.0
+torchaudio>=0.12.0
+
+# Computer Vision
+opencv-python>=4.5.0
+scikit-image>=0.19.0
+
+# Audio Processing
+whisper-python>=1.0.0
+librosa>=0.9.0
+
+# Web Interface
+gradio>=3.20.0
+
+# Utilities
+tqdm>=4.64.0
+Pillow>=9.0.0
+matplotlib>=3.5.0
+
+# Compatibility fixes
+numba>=0.56.0
+ffmpeg-python>=0.2.0
+
+# Optional: for better performance
+psutil>=5.8.0
