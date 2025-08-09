@@ -11,7 +11,33 @@ import gradio as gr
 import tempfile
 import time
 import torch
-import whisper
+
+# Handle numpy version compatibility issues
+import sys
+try:
+    import numpy as np
+    # Check if numpy version is compatible
+    numpy_version = tuple(map(int, np.__version__.split('.')[:2]))
+    if numpy_version < (1, 24):
+        logging.warning(f"NumPy version {np.__version__} is too old, upgrading...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "numpy>=1.24,<2.3"], 
+                      capture_output=True, text=True)
+        # Restart Python interpreter after numpy upgrade
+        logging.info("Restarting Python after NumPy upgrade...")
+        os.execv(sys.executable, ['python'] + sys.argv)
+except ImportError:
+    subprocess.run([sys.executable, "-m", "pip", "install", "numpy>=1.24,<2.3"], 
+                  capture_output=True, text=True)
+    import numpy as np
+
+try:
+    import whisper
+except ImportError as e:
+    logging.warning(f"Whisper import failed: {e}")
+    # Try to fix numba version issues
+    subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "numba"], 
+                  capture_output=True, text=True)
+    import whisper
 
 # Import our modules
 from src.rife_engine import RealRIFE
