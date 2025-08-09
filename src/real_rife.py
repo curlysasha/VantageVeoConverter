@@ -25,15 +25,36 @@ class RealRIFE:
         try:
             logging.info("🚀 Setting up REAL RIFE...")
             
-            # Clone RIFE repository to temp directory
+            # Clone RIFE repository to temp directory - try different versions
             self.rife_dir = os.path.join(tempfile.gettempdir(), "ECCV2022-RIFE")
             
             if not os.path.exists(self.rife_dir):
-                logging.info("📦 Cloning ECCV2022-RIFE...")
-                result = subprocess.run([
-                    "git", "clone", "https://github.com/megvii-research/ECCV2022-RIFE.git", 
-                    self.rife_dir
-                ], capture_output=True, text=True, timeout=300)
+                # Try different RIFE repositories that might match our weights
+                rife_repos = [
+                    "https://github.com/megvii-research/ECCV2022-RIFE.git",
+                    "https://github.com/hzwer/Practical-RIFE.git", 
+                    "https://github.com/styler00dollar/VSGAN-tensorrt-docker.git"
+                ]
+                
+                for repo_url in rife_repos:
+                    try:
+                        logging.info(f"📦 Trying RIFE repo: {repo_url}")
+                        result = subprocess.run([
+                            "git", "clone", repo_url, self.rife_dir
+                        ], capture_output=True, text=True, timeout=300)
+                        
+                        if result.returncode == 0:
+                            logging.info(f"✅ Successfully cloned: {repo_url}")
+                            break
+                    except:
+                        continue
+                
+                if not os.path.exists(self.rife_dir):
+                    logging.info("📦 Cloning main ECCV2022-RIFE...")
+                    result = subprocess.run([
+                        "git", "clone", "https://github.com/megvii-research/ECCV2022-RIFE.git", 
+                        self.rife_dir
+                    ], capture_output=True, text=True, timeout=300)
                 
                 if result.returncode != 0:
                     raise Exception(f"Git clone failed: {result.stderr}")
@@ -42,7 +63,7 @@ class RealRIFE:
             if self.rife_dir not in sys.path:
                 sys.path.insert(0, self.rife_dir)
             
-            # Import and initialize RIFE model
+            # Import and initialize RIFE model - try multiple versions
             self._load_rife_model()
             
             self.available = True
