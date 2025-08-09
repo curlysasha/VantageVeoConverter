@@ -4,6 +4,9 @@ Triple video diagnostic: Original + Freeze Detection + AI Repair
 import cv2
 import numpy as np
 import logging
+import subprocess
+import os
+import tempfile
 from .timecode_freeze_predictor import predict_freezes_from_timecodes
 from .ai_freeze_repair import repair_freezes_with_rife
 
@@ -76,9 +79,12 @@ def create_triple_diagnostic(synchronized_video_path, timecode_path, output_path
 
 def create_triple_comparison_video(original_path, freeze_frames, frame_predictions, repaired_path, output_path):
     """
-    Create 3-panel comparison video.
+    Create 3-panel comparison video with audio preservation.
     """
-    logging.info("🎨 Creating triple comparison video...")
+    logging.info("🎨 Creating triple comparison video with audio...")
+    
+    # Create temporary video file without audio first
+    temp_video_path = output_path.replace('.mp4', '_temp_no_audio.mp4')
     
     # Open all videos
     cap_original = cv2.VideoCapture(original_path)
@@ -89,10 +95,10 @@ def create_triple_comparison_video(original_path, freeze_frames, frame_predictio
     height = int(cap_original.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap_original.get(cv2.CAP_PROP_FRAME_COUNT))
     
-    # Create output video - triple height
+    # Create output video - triple height (temporary, without audio)
     new_height = height * 3
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, new_height))
+    out = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, new_height))
     
     frame_idx = 0
     marked_count = 0
@@ -171,6 +177,44 @@ def create_triple_comparison_video(original_path, freeze_frames, frame_predictio
     cap_original.release()
     cap_repaired.release()
     out.release()
+    
+    # Add audio from original video to the final output
+    logging.info("🔊 Adding audio to triple diagnostic video...")
+    try:
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', temp_video_path,     # Video input (no audio)
+            '-i', original_path,       # Audio source (original synchronized video)
+            '-c:v', 'copy',           # Copy video stream as-is
+            '-c:a', 'aac',            # Use AAC audio codec
+            '-b:a', '128k',           # Audio bitrate
+            '-map', '0:v:0',          # Take video from first input
+            '-map', '1:a:0?',         # Take audio from second input (optional)
+            '-shortest',              # End when shortest stream ends
+            output_path
+        ]
+        
+        logging.info(f"🔧 Running FFmpeg to add audio...")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode == 0:
+            logging.info("✅ Audio added successfully to triple diagnostic")
+            # Clean up temporary file
+            if os.path.exists(temp_video_path):
+                os.remove(temp_video_path)
+        else:
+            logging.warning(f"⚠️ Audio addition failed: {result.stderr}")
+            logging.info("📝 Using video-only diagnostic file")
+            # Rename temp file to final output if ffmpeg failed
+            if os.path.exists(temp_video_path):
+                os.rename(temp_video_path, output_path)
+                
+    except Exception as e:
+        logging.warning(f"⚠️ Audio processing error: {e}")
+        logging.info("📝 Using video-only diagnostic file")
+        # Rename temp file to final output if audio processing failed
+        if os.path.exists(temp_video_path):
+            os.rename(temp_video_path, output_path)
     
     # Create detailed report
     marked_pct = (marked_count / total_frames * 100) if total_frames > 0 else 0
