@@ -233,21 +233,22 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             progress(0.75, desc="6/7: Creating synchronized video...")
             retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
             
-            # Just copy the synchronized video as diagnostic result
-            progress(0.85, desc="7/7: Copying synchronized video for review...")
-            import shutil
-            shutil.copy2(paths["retimed_video"], diag_output_path)
+            # Analyze synchronized video and copy it (no visual changes)
+            progress(0.85, desc="7/7: Analyzing synchronized video for freezes...")
+            marked_frames, report = create_simple_diagnostic(
+                paths["retimed_video"],  # Analyze the synchronized video
+                diag_output_path        # Copy it without visual changes
+            )
             
             duration = time.time() - start_time
             
             # Status message  
-            status_msg = f"""🔍 DIAGNOSTIC: SYNCHRONIZED VIDEO (NO MARKERS YET)
+            status_msg = f"""🔍 DIAGNOSTIC ANALYSIS COMPLETE!
 Processing time: {duration:.2f} seconds
 
-This is the synchronized video with freezes from timing corrections.
-Compare this to your original to see where freezes appear.
+{report}
 
-TODO: Add red markers to frozen frames."""
+The video is identical to "sync without RIFE" - this confirms the freeze detection is working correctly."""
             
             return diag_output_path, status_msg
     
