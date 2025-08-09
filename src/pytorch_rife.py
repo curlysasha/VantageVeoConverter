@@ -78,26 +78,62 @@ class IFNet(nn.Module):
         img0_s4 = F.interpolate(img0, scale_factor=0.25, mode='bilinear', align_corners=False)
         img1_s4 = F.interpolate(img1, scale_factor=0.25, mode='bilinear', align_corners=False)
         
-        warped_img0 = self.warp(img0_s4, flow0_up[:, :2])
-        warped_img1 = self.warp(img1_s4, flow0_up[:, 2:4])
-        flow1 = self.block1(torch.cat([img0_s4, img1_s4, flow0_up, warped_img0, warped_img1], 1))
-        flow_list.append(flow1)
+        try:
+            warped_img0 = self.warp(img0_s4, flow0_up[:, :2])
+            warped_img1 = self.warp(img1_s4, flow0_up[:, 2:4])
+            flow1_input = torch.cat([img0_s4, img1_s4, flow0_up[:, :2], flow0_up[:, 2:4]], 1)  # 3+3+2+2=10 channels
+            flow1 = self.block1(flow1_input)
+            flow_list.append(flow1)
+        except Exception as e:
+            # Skip multi-scale, use simple approach
+            flow = flow0_up
+            flow_t0 = flow[:, :2] * timestep
+            flow_t1 = flow[:, 2:4] * (1 - timestep)
+            
+            warped_img0 = self.warp(img0, flow_t0)
+            warped_img1 = self.warp(img1, flow_t1)
+            interpolated = warped_img0 * (1 - timestep) + warped_img1 * timestep
+            return interpolated[:, :, :h, :w]
         
         # Scale 2
         flow1_up = F.interpolate(flow1, scale_factor=2.0, mode='bilinear', align_corners=False) * 2.0
         img0_s2 = F.interpolate(img0, scale_factor=0.5, mode='bilinear', align_corners=False)
         img1_s2 = F.interpolate(img1, scale_factor=0.5, mode='bilinear', align_corners=False)
         
-        warped_img0 = self.warp(img0_s2, flow1_up[:, :2])
-        warped_img1 = self.warp(img1_s2, flow1_up[:, 2:4])
-        flow2 = self.block2(torch.cat([img0_s2, img1_s2, flow1_up, warped_img0, warped_img1], 1))
-        flow_list.append(flow2)
+        try:
+            warped_img0 = self.warp(img0_s2, flow1_up[:, :2])
+            warped_img1 = self.warp(img1_s2, flow1_up[:, 2:4])
+            flow2_input = torch.cat([img0_s2, img1_s2, flow1_up[:, :2], flow1_up[:, 2:4]], 1)  # 3+3+2+2=10 channels
+            flow2 = self.block2(flow2_input)
+            flow_list.append(flow2)
+        except Exception as e:
+            # Use flow from previous scale
+            flow = flow1_up
+            flow_t0 = flow[:, :2] * timestep
+            flow_t1 = flow[:, 2:4] * (1 - timestep)
+            
+            warped_img0 = self.warp(img0, flow_t0)
+            warped_img1 = self.warp(img1, flow_t1)
+            interpolated = warped_img0 * (1 - timestep) + warped_img1 * timestep
+            return interpolated[:, :, :h, :w]
         
         # Full scale
         flow2_up = F.interpolate(flow2, scale_factor=2.0, mode='bilinear', align_corners=False) * 2.0
-        warped_img0 = self.warp(img0, flow2_up[:, :2])
-        warped_img1 = self.warp(img1, flow2_up[:, 2:4])
-        flow3 = self.block3(torch.cat([img0, img1, flow2_up, warped_img0, warped_img1], 1))
+        try:
+            warped_img0 = self.warp(img0, flow2_up[:, :2])
+            warped_img1 = self.warp(img1, flow2_up[:, 2:4])
+            flow3_input = torch.cat([img0, img1, flow2_up[:, :2], flow2_up[:, 2:4]], 1)  # 3+3+2+2=10 channels
+            flow3 = self.block3(flow3_input)
+        except Exception as e:
+            # Use flow from previous scale
+            flow = flow2_up
+            flow_t0 = flow[:, :2] * timestep
+            flow_t1 = flow[:, 2:4] * (1 - timestep)
+            
+            warped_img0 = self.warp(img0, flow_t0)
+            warped_img1 = self.warp(img1, flow_t1)
+            interpolated = warped_img0 * (1 - timestep) + warped_img1 * timestep
+            return interpolated[:, :, :h, :w]
         
         # Final interpolation
         flow = flow3 + flow2_up

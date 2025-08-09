@@ -8,37 +8,37 @@ import cv2
 import numpy as np
 import subprocess
 import sys
-from .pytorch_rife import PyTorchRIFE
+from .optical_flow_rife import OpticalFlowRIFE
 
 class RealRIFE:
-    """Real RIFE AI model for frame interpolation - PyTorch implementation."""
+    """Real RIFE AI model for frame interpolation - Optical Flow implementation."""
     
     def __init__(self, device="cuda"):
         self.device = device if torch.cuda.is_available() else "cpu"
         self.available = False
-        self.method = "pytorch_rife"
-        self.pytorch_rife = None
+        self.method = "optical_flow_rife"
+        self.optical_flow_rife = None
         self._setup_rife()
     
     def _setup_rife(self):
-        """Setup PyTorch RIFE AI model."""
+        """Setup Optical Flow RIFE AI model."""
         try:
-            logging.info("🤖 Setting up PyTorch RIFE AI model...")
+            logging.info("🤖 Setting up Optical Flow RIFE AI model...")
             
-            # Initialize PyTorch RIFE
-            self.pytorch_rife = PyTorchRIFE(self.device)
+            # Initialize Optical Flow RIFE
+            self.optical_flow_rife = OpticalFlowRIFE(self.device)
             
-            if self.pytorch_rife.available:
-                self.method = "pytorch_rife"
+            if self.optical_flow_rife.available:
+                self.method = "optical_flow_rife"
                 self.available = True
-                logging.info("✅ PyTorch RIFE AI ready!")
+                logging.info("✅ Optical Flow RIFE ready! (NO BLENDING)")
             else:
                 self.method = "enhanced_cv" 
                 self.available = False
-                logging.info("⚠️ PyTorch RIFE failed, using enhanced fallback")
+                logging.info("⚠️ Optical Flow RIFE failed, using enhanced fallback")
                 
         except Exception as e:
-            logging.error(f"❌ PyTorch RIFE setup failed: {e}")
+            logging.error(f"❌ Optical Flow RIFE setup failed: {e}")
             self.method = "simple"
             self.available = False
             
@@ -60,18 +60,18 @@ class RealRIFE:
     # Old setup function removed - using PyTorch RIFE now
     
     def interpolate_frames(self, frame1, frame2, num_intermediate=1):
-        """Real PyTorch RIFE AI interpolation between two frames."""
+        """Real Optical Flow RIFE interpolation - NO BLENDING."""
         try:
-            # Use PyTorch RIFE if available
-            if self.method == "pytorch_rife" and self.pytorch_rife and self.pytorch_rife.available:
-                return self.pytorch_rife.interpolate_frames(frame1, frame2, num_intermediate)
+            # Use Optical Flow RIFE if available
+            if self.method == "optical_flow_rife" and self.optical_flow_rife and self.optical_flow_rife.available:
+                return self.optical_flow_rife.interpolate_frames(frame1, frame2, num_intermediate)
             elif self.method == "enhanced_cv":
                 return self._enhanced_interpolation(frame1, frame2, num_intermediate)
             else:
                 return self._simple_interpolation(frame1, frame2, num_intermediate)
             
         except Exception as e:
-            logging.warning(f"RIFE interpolation failed, using fallback: {e}")
+            logging.warning(f"Optical Flow RIFE interpolation failed, using fallback: {e}")
             return self._simple_interpolation(frame1, frame2, num_intermediate)
     
     # Old RIFE functions removed - using PyTorch RIFE now

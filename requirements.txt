@@ -28,3 +28,4 @@ ffmpeg-python>=0.2.0
 
 # Optional: for better performance
 psutil>=5.8.0
+scipy>=1.9.0

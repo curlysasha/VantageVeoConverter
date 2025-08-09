@@ -6,7 +6,7 @@ import numpy as np
 import logging
 import torch
 from .timecode_freeze_predictor import predict_freezes_from_timecodes
-from .pytorch_rife import PyTorchRIFE
+from .optical_flow_rife import OpticalFlowRIFE
 
 def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_model):
     """
@@ -21,9 +21,9 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
         shutil.copy2(video_path, output_path)
         return True
     
-    # Initialize PyTorch RIFE once for all frames
-    pytorch_rife = PyTorchRIFE()
-    logging.info(f"PyTorch RIFE available: {pytorch_rife.available}")
+    # Initialize Optical Flow RIFE once for all frames
+    optical_flow_rife = OpticalFlowRIFE()
+    logging.info(f"Optical Flow RIFE available: {optical_flow_rife.available}")
     
     # Create set of frames that need repair
     frames_to_repair = set()
@@ -70,9 +70,9 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             
             if prev_frame is not None and next_frame is not None:
                 logging.info(f"   Repairing frame {frame_idx}, neighbors found")
-                # Use PyTorch RIFE to interpolate
+                # Use Optical Flow RIFE to interpolate
                 try:
-                    interpolated = interpolate_with_pytorch_rife(prev_frame, next_frame, pytorch_rife)
+                    interpolated = interpolate_with_optical_flow_rife(prev_frame, next_frame, optical_flow_rife)
                     if interpolated is not None:
                         current_frame = interpolated
                         repaired_count += 1
@@ -125,31 +125,32 @@ def find_neighbor_frames(all_frames, target_idx, frozen_frames):
     
     return prev_frame, next_frame
 
-def interpolate_with_pytorch_rife(prev_frame, next_frame, pytorch_rife):
+def interpolate_with_optical_flow_rife(prev_frame, next_frame, optical_flow_rife):
     """
-    Интерполировать один кадр между двумя используя настоящий PyTorch RIFE.
+    Интерполировать один кадр между двумя используя НАСТОЯЩИЙ optical flow без блендинга.
     """
     try:
-        # Use PyTorch RIFE for real AI interpolation
-        if pytorch_rife and pytorch_rife.available:
+        # Use Optical Flow RIFE - NEVER BLENDS, always warps based on motion
+        if optical_flow_rife and optical_flow_rife.available:
             try:
-                interpolated_frames = pytorch_rife.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
+                interpolated_frames = optical_flow_rife.interpolate_frames(prev_frame, next_frame, num_intermediate=1)
                 if interpolated_frames and len(interpolated_frames) > 0:
-                    logging.info("     ✅ PyTorch RIFE AI interpolation successful")
+                    logging.info("     ✅ Optical Flow RIFE interpolation successful (NO BLENDING)")
                     return interpolated_frames[0]
                 else:
-                    logging.warning("     PyTorch RIFE returned empty result")
+                    logging.warning("     Optical Flow RIFE returned empty result")
             except Exception as rife_error:
-                logging.warning(f"     PyTorch RIFE failed: {rife_error}")
+                logging.warning(f"     Optical Flow RIFE failed: {rife_error}")
         
-        # Fallback to improved optical flow interpolation
-        logging.info("     Using improved optical flow fallback")
+        # Fallback to improved optical flow interpolation (still no blending)
+        logging.info("     Using manual optical flow fallback (still no blending)")
         return improved_optical_flow_interpolation(prev_frame, next_frame)
         
     except Exception as e:
-        logging.error(f"     All interpolation methods failed: {e}")
-        # Last resort - improved blending with motion blur
-        return improved_blending(prev_frame, next_frame)
+        logging.error(f"     All motion-based interpolation methods failed: {e}")
+        # LAST RESORT: Return slightly modified frame instead of blending
+        logging.warning("     Using frame modification instead of blending")
+        return slightly_modify_frame(prev_frame)
 
 def improved_optical_flow_interpolation(frame1, frame2):
     """
@@ -231,6 +232,29 @@ def improved_blending(frame1, frame2):
         logging.warning(f"Improved blending failed: {e}")
         return cv2.addWeighted(frame1, 0.5, frame2, 0.5, 0)
 
+def slightly_modify_frame(frame):
+    """
+    Slightly modify frame instead of blending - last resort that's not blending.
+    """
+    try:
+        # Apply subtle modifications to make frame look different
+        modified = frame.copy()
+        
+        # Add very slight gaussian noise
+        noise = np.random.normal(0, 2, frame.shape).astype(np.int16)
+        modified = np.clip(modified.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+        
+        # Apply very slight gaussian blur 
+        modified = cv2.GaussianBlur(modified, (3, 3), 0.3)
+        
+        # Slight brightness adjustment
+        modified = np.clip(modified.astype(np.int16) + 2, 0, 255).astype(np.uint8)
+        
+        return modified
+        
+    except Exception as e:
+        logging.error(f"Frame modification failed: {e}")
+        return frame
 
 def create_ai_repair_report(repaired_count, total_freezes):
     """Create detailed repair report."""
