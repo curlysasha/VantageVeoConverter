@@ -139,32 +139,38 @@ def synchronization_workflow(input_video_path, target_audio_path, use_rife=True,
                 progress_callback=timecode_progress
             )
             
-            # RIFE interpolation
-            video_for_retiming = input_video_path
-            timecodes_for_retiming = paths["timecodes"]
-            interpolation_applied = False
-            
             if use_rife:
-                progress(0.75, desc="6/8: Predicting freezes for RIFE repair...")
-                # Use same logic as diagnostic mode - predict freezes from timecodes
+                # First, create synchronized video exactly like diagnostic mode
+                progress(0.75, desc="6/8: Creating synchronized video...")
+                retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
+                
+                # Predict freezes from timecodes (same as diagnostic)
+                progress(0.8, desc="7/8: Predicting and repairing freezes with RIFE...")
                 freeze_predictions = predict_freezes_from_timecodes(paths["timecodes"])
                 
                 if freeze_predictions:
-                    progress(0.8, desc="6/8: Applying RIFE repair to detected freezes...")
-                    # Use RIFE repair system exactly like diagnostic mode
+                    # Apply RIFE repair to synchronized video (same as diagnostic)
                     interpolation_applied = repair_freezes_with_rife(
-                        input_video_path, freeze_predictions, paths["interpolated_video"], RIFE_MODEL
+                        paths["retimed_video"], freeze_predictions, paths["interpolated_video"], RIFE_MODEL
                     )
                     if interpolation_applied:
-                        video_for_retiming = paths["interpolated_video"]
+                        # Use AI-repaired video for final output
+                        video_for_final_mux = paths["interpolated_video"]
+                    else:
+                        # RIFE failed, use synchronized video
+                        video_for_final_mux = paths["retimed_video"]
+                else:
+                    # No freezes detected, use synchronized video
+                    video_for_final_mux = paths["retimed_video"]
             else:
-                progress(0.8, desc="6/8: Skipping interpolation...")
-            
-            progress(0.9, desc="7/8: Retiming video...")
-            retime_video(video_for_retiming, timecodes_for_retiming, paths["retimed_video"])
+                progress(0.8, desc="6/8: Skipping RIFE repair...")
+                # Standard retiming without RIFE
+                progress(0.9, desc="7/8: Retiming video...")
+                retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
+                video_for_final_mux = paths["retimed_video"]
             
             progress(0.95, desc="8/8: Final muxing...")
-            mux_final_output(paths["retimed_video"], target_audio_path, paths["temp_final_output"])
+            mux_final_output(video_for_final_mux, target_audio_path, paths["temp_final_output"])
             
             progress(0.99, desc="Saving...")
             shutil.copy2(paths["temp_final_output"], final_output_path)
