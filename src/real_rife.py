@@ -73,21 +73,54 @@ class RealRIFE:
             
             logging.info("📥 Downloading RIFE model weights...")
             
-            # Download from official releases
-            model_url = "https://github.com/megvii-research/ECCV2022-RIFE/releases/download/v4.6/train_log.zip"
+            # Try multiple model sources
+            model_urls = [
+                "https://github.com/hzwer/Practical-RIFE/releases/download/4.6/train_log.zip",
+                "https://huggingface.co/AlexWortega/RIFE/resolve/main/flownet.pkl",
+                "https://github.com/styler00dollar/VSGAN-tensorrt-docker/releases/download/models/rife46_v2.0.zip"
+            ]
             
             import urllib.request
             import zipfile
             
-            zip_path = os.path.join(model_path, "train_log.zip")
-            urllib.request.urlretrieve(model_url, zip_path)
+            # Try downloading from different sources
+            download_success = False
+            for i, model_url in enumerate(model_urls):
+                try:
+                    logging.info(f"   Trying source {i+1}/{len(model_urls)}: {model_url[:50]}...")
+                    
+                    if model_url.endswith('.pkl'):
+                        # Direct model file
+                        direct_model_path = os.path.join(model_path, "flownet.pkl")
+                        urllib.request.urlretrieve(model_url, direct_model_path)
+                        logging.info(f"✅ RIFE model downloaded directly from source {i+1}")
+                        download_success = True
+                        break
+                    else:
+                        # Zip archive
+                        zip_path = os.path.join(model_path, "train_log.zip")
+                        urllib.request.urlretrieve(model_url, zip_path)
+                        
+                        # Extract model
+                        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                            zip_ref.extractall(os.path.dirname(model_path))
+                        
+                        os.remove(zip_path)
+                        logging.info(f"✅ RIFE model downloaded from source {i+1}")
+                        download_success = True
+                        break
+                    
+                except Exception as e:
+                    logging.warning(f"   Source {i+1} failed: {e}")
+                    # Clean up failed downloads
+                    for cleanup_file in ["train_log.zip", "flownet.pkl"]:
+                        cleanup_path = os.path.join(model_path, cleanup_file)
+                        if os.path.exists(cleanup_path):
+                            os.remove(cleanup_path)
+                    continue
             
-            # Extract model
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(os.path.dirname(model_path))
-            
-            os.remove(zip_path)
-            logging.info("✅ RIFE model downloaded")
+            if not download_success:
+                raise Exception("❌ Could not download RIFE model from any source! NO FALLBACKS!")
             
         except Exception as e:
             logging.error(f"Model download failed: {e}")
@@ -106,10 +139,7 @@ class RealRIFE:
                 try:
                     from RIFE_HDv3 import Model
                 except ImportError:
-                    # Create minimal model class if import fails
-                    logging.warning("Creating fallback RIFE model...")
-                    self.model = self._create_fallback_model()
-                    return
+                    raise Exception("❌ Cannot import RIFE model! NO FALLBACKS!")
             
             # Initialize model
             self.model = Model()
@@ -127,76 +157,14 @@ class RealRIFE:
             
         except Exception as e:
             logging.error(f"Model loading failed: {e}")
-            self.model = self._create_fallback_model()
+            raise Exception("❌ RIFE model loading failed! NO FALLBACKS!")
     
-    def _create_fallback_model(self):
-        """Create fallback model if official RIFE fails."""
-        class FallbackModel:
-            def __init__(self):
-                self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            
-            def inference(self, img0, img1, timestep=0.5):
-                """Fallback inference using simple warping."""
-                try:
-                    # Simple optical flow based interpolation
-                    with torch.no_grad():
-                        # Calculate simple flow
-                        diff = img1 - img0
-                        
-                        # Create coordinate grid
-                        n, c, h, w = img0.shape
-                        grid_y, grid_x = torch.meshgrid(
-                            torch.arange(h, device=self.device, dtype=torch.float32),
-                            torch.arange(w, device=self.device, dtype=torch.float32)
-                        )
-                        grid = torch.stack([grid_x, grid_y], dim=0).unsqueeze(0)
-                        
-                        # Simple flow estimation
-                        flow = diff[:, :2] * 5  # Simple flow approximation
-                        
-                        # Warp images
-                        flow_t = flow * timestep
-                        warp_grid = grid + flow_t
-                        
-                        # Normalize grid
-                        warp_grid[:, 0] = 2 * warp_grid[:, 0] / (w - 1) - 1
-                        warp_grid[:, 1] = 2 * warp_grid[:, 1] / (h - 1) - 1
-                        warp_grid = warp_grid.permute(0, 2, 3, 1)
-                        
-                        # Grid sample
-                        warped_img0 = F.grid_sample(img0, warp_grid, mode='bilinear', 
-                                                  padding_mode='border', align_corners=True)
-                        
-                        # Backward warp
-                        flow_back = flow * (timestep - 1)
-                        warp_grid_back = grid + flow_back
-                        warp_grid_back[:, 0] = 2 * warp_grid_back[:, 0] / (w - 1) - 1
-                        warp_grid_back[:, 1] = 2 * warp_grid_back[:, 1] / (h - 1) - 1
-                        warp_grid_back = warp_grid_back.permute(0, 2, 3, 1)
-                        
-                        warped_img1 = F.grid_sample(img1, warp_grid_back, mode='bilinear',
-                                                  padding_mode='border', align_corners=True)
-                        
-                        # Motion-based combination
-                        motion_mask = torch.mean(torch.abs(diff), dim=1, keepdim=True)
-                        motion_mask = torch.sigmoid(motion_mask - 0.1)
-                        
-                        result = warped_img0 * (1 - motion_mask * timestep) + warped_img1 * (motion_mask * timestep)
-                        
-                        return result
-                        
-                except Exception as e:
-                    logging.error(f"Fallback inference failed: {e}")
-                    # Last resort - simple weighted average
-                    return img0 * (1 - timestep) + img1 * timestep
-        
-        return FallbackModel()
+    # NO FALLBACKS! ONLY REAL RIFE!
     
     def interpolate_frames(self, frame1, frame2, num_intermediate=1):
         """Interpolate frames using REAL RIFE."""
         if not self.available or self.model is None:
-            logging.warning("REAL RIFE not available")
-            return []
+            raise Exception("❌ REAL RIFE not available! NO FALLBACKS!")
         
         try:
             # Convert frames to tensors
@@ -213,8 +181,7 @@ class RealRIFE:
                     if hasattr(self.model, 'inference'):
                         result_tensor = self.model.inference(tensor1, tensor2, timestep)
                     else:
-                        # Fallback method
-                        result_tensor = tensor1 * (1 - timestep) + tensor2 * timestep
+                        raise Exception("❌ RIFE model has no inference method! NO FALLBACKS!")
                     
                     # Convert back to frame
                     result_frame = self._tensor_to_frame(result_tensor)
@@ -226,7 +193,7 @@ class RealRIFE:
             
         except Exception as e:
             logging.error(f"REAL RIFE interpolation failed: {e}")
-            return []
+            raise Exception("❌ REAL RIFE interpolation failed! NO FALLBACKS!")
     
     def _frame_to_tensor(self, frame):
         """Convert BGR frame to RGB tensor."""

@@ -33,14 +33,11 @@ class RealRIFE:
                 self.available = True
                 logging.info("✅ REAL RIFE ready from official repository!")
             else:
-                self.method = "enhanced_cv" 
-                self.available = False
-                logging.info("⚠️ REAL RIFE failed, using enhanced fallback")
+                raise Exception("❌ REAL RIFE failed! NO FALLBACKS!")
                 
         except Exception as e:
             logging.error(f"❌ REAL RIFE setup failed: {e}")
-            self.method = "simple"
-            self.available = False
+            raise Exception("❌ REAL RIFE setup failed! NO FALLBACKS!")
             
         logging.info(f"🎯 Final RIFE method: {self.method.upper()}")
         try:
@@ -61,18 +58,11 @@ class RealRIFE:
     
     def interpolate_frames(self, frame1, frame2, num_intermediate=1):
         """REAL RIFE interpolation from official repository."""
-        try:
-            # Use REAL RIFE if available
-            if self.method == "real_rife" and self.real_rife_model and self.real_rife_model.available:
-                return self.real_rife_model.interpolate_frames(frame1, frame2, num_intermediate)
-            elif self.method == "enhanced_cv":
-                return self._enhanced_interpolation(frame1, frame2, num_intermediate)
-            else:
-                return self._simple_interpolation(frame1, frame2, num_intermediate)
-            
-        except Exception as e:
-            logging.warning(f"REAL RIFE interpolation failed, using fallback: {e}")
-            return self._simple_interpolation(frame1, frame2, num_intermediate)
+        # Use REAL RIFE ONLY - NO FALLBACKS!
+        if self.method == "real_rife" and self.real_rife_model and self.real_rife_model.available:
+            return self.real_rife_model.interpolate_frames(frame1, frame2, num_intermediate)
+        else:
+            raise Exception("❌ REAL RIFE not available! NO FALLBACKS!")
     
     # Old RIFE functions removed - using PyTorch RIFE now
 

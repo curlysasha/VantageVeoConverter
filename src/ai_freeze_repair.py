@@ -142,15 +142,12 @@ def interpolate_with_real_rife(prev_frame, next_frame, real_rife):
             except Exception as rife_error:
                 logging.warning(f"     REAL RIFE failed: {rife_error}")
         
-        # Fallback to improved optical flow interpolation
-        logging.info("     REAL RIFE not available, using optical flow fallback")
-        return improved_optical_flow_interpolation(prev_frame, next_frame)
+        # NO FALLBACKS!
+        raise Exception("❌ REAL RIFE not available! NO FALLBACKS!")
         
     except Exception as e:
-        logging.error(f"     All interpolation methods failed: {e}")
-        # Last resort - return original frame
-        logging.warning("     Using original frame")
-        return prev_frame
+        logging.error(f"     REAL RIFE interpolation failed: {e}")
+        raise Exception("❌ REAL RIFE interpolation failed! NO FALLBACKS!")
 
 def improved_optical_flow_interpolation(frame1, frame2):
     """
