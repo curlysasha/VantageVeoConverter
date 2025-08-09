@@ -102,52 +102,97 @@ def create_comparison_diagnostic(synchronized_video_path, output_path):
     
     # Add audio from original synchronized video using ffmpeg
     logging.info("🔊 Adding audio track to diagnostic video...")
+    logging.info(f"📁 Source video path: {synchronized_video_path}")
+    logging.info(f"📁 Temp video path: {temp_video_path}")
+    logging.info(f"📁 Output path: {output_path}")
     
-    # First, check if source video has audio
-    audio_check_cmd = ['ffprobe', '-v', 'quiet', '-select_streams', 'a', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', synchronized_video_path]
+    # Check if files exist
+    if not os.path.exists(synchronized_video_path):
+        logging.error(f"❌ Source video not found: {synchronized_video_path}")
+        if os.path.exists(temp_video_path):
+            os.rename(temp_video_path, output_path)
+        return freeze_count > 0, "Source video file not found"
+    
+    if not os.path.exists(temp_video_path):
+        logging.error(f"❌ Temp video not found: {temp_video_path}")
+        return freeze_count > 0, "Temp video file not found"
+    
+    # Check if source video has audio using detailed probe
+    logging.info("🔍 Probing source video for audio streams...")
+    audio_check_cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_streams', synchronized_video_path]
     
     try:
+        import json
         audio_check = subprocess.run(audio_check_cmd, capture_output=True, text=True, timeout=30)
-        has_audio = bool(audio_check.stdout.strip())
         
-        if not has_audio:
-            logging.warning("⚠️ Source video has no audio track")
-            # Rename temp file to final output
+        if audio_check.returncode != 0:
+            logging.error(f"❌ ffprobe failed: {audio_check.stderr}")
+            if os.path.exists(temp_video_path):
+                os.rename(temp_video_path, output_path)
+            return freeze_count > 0, "Failed to probe source video"
+        
+        probe_data = json.loads(audio_check.stdout)
+        audio_streams = [s for s in probe_data.get('streams', []) if s.get('codec_type') == 'audio']
+        
+        logging.info(f"📊 Found {len(audio_streams)} audio stream(s)")
+        for i, stream in enumerate(audio_streams):
+            logging.info(f"   Audio stream {i}: {stream.get('codec_name', 'unknown')} @ {stream.get('bit_rate', 'unknown')} bps")
+        
+        if not audio_streams:
+            logging.warning("⚠️ Source video has no audio streams")
+            # Just rename temp file to final output
             if os.path.exists(temp_video_path):
                 os.rename(temp_video_path, output_path)
         else:
-            logging.info(f"✅ Source video has audio: {audio_check.stdout.strip()}")
-            
-            # Build ffmpeg command
+            # Build ffmpeg command with more verbose output
             cmd = [
                 'ffmpeg', '-y',  # Overwrite output file
+                '-v', 'info',    # More verbose logging
                 '-i', temp_video_path,  # Video input
                 '-i', synchronized_video_path,  # Audio source
                 '-c:v', 'copy',  # Copy video stream as-is
-                '-c:a', 'aac',  # Use AAC audio codec
+                '-c:a', 'aac',   # Use AAC audio codec
+                '-b:a', '128k',  # Set audio bitrate
                 '-map', '0:v:0',  # Take video from first input
                 '-map', '1:a:0',  # Take audio from second input
-                '-shortest',  # End when shortest stream ends
+                '-shortest',      # End when shortest stream ends
                 output_path
             ]
             
-            logging.info(f"🔧 FFmpeg command: {' '.join(cmd)}")
+            logging.info(f"🔧 Running FFmpeg command...")
+            logging.info(f"   Command: {' '.join(cmd)}")
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             
+            logging.info(f"📊 FFmpeg return code: {result.returncode}")
+            if result.stdout:
+                logging.info(f"📊 FFmpeg STDOUT:\n{result.stdout}")
+            if result.stderr:
+                logging.info(f"📊 FFmpeg STDERR:\n{result.stderr}")
+            
             if result.returncode == 0:
-                logging.info("✅ Audio added successfully")
+                logging.info("✅ FFmpeg completed successfully")
+                
+                # Verify output file has audio
+                verify_cmd = ['ffprobe', '-v', 'quiet', '-select_streams', 'a', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', output_path]
+                verify_result = subprocess.run(verify_cmd, capture_output=True, text=True, timeout=30)
+                
+                if verify_result.stdout.strip():
+                    logging.info(f"✅ Output video has audio: {verify_result.stdout.strip()}")
+                else:
+                    logging.warning("⚠️ Output video has no audio - something went wrong!")
+                
                 # Clean up temporary file
                 if os.path.exists(temp_video_path):
                     os.remove(temp_video_path)
+                    logging.info("🗑️ Cleaned up temporary file")
             else:
                 logging.error(f"❌ FFmpeg failed with return code {result.returncode}")
-                logging.error(f"STDOUT: {result.stdout}")
-                logging.error(f"STDERR: {result.stderr}")
                 logging.info("📝 Using video-only diagnostic file")
                 # Rename temp file to final output if ffmpeg failed
                 if os.path.exists(temp_video_path):
                     os.rename(temp_video_path, output_path)
+                    logging.info("📄 Moved temp file to final output")
                     
     except subprocess.TimeoutExpired:
         logging.error("❌ FFmpeg timeout")

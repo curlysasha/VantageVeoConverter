@@ -234,6 +234,7 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
                 "align_target": os.path.join(temp_dir, "align_target.json"),
                 "timecodes": os.path.join(temp_dir, "timecodes_v2.txt"),
                 "retimed_video": os.path.join(temp_dir, "retimed_diagnostic.mp4"),
+                "retimed_with_audio": os.path.join(temp_dir, "retimed_with_audio.mp4"),
             }
             
             # Standard pipeline for timecode generation
@@ -260,16 +261,20 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             )
             
             # Create physically retimed video with ACTUAL frame duplicates
-            progress(0.75, desc="6/7: Creating video with physical frame duplicates...")
+            progress(0.75, desc="6/8: Creating video with physical frame duplicates...")
             create_physical_retime(input_video_path, paths["timecodes"], paths["retimed_video"])
             
+            # Add audio to retimed video using target audio
+            progress(0.8, desc="7/8: Adding audio to synchronized video...")
+            mux_final_output(paths["retimed_video"], target_audio_path, paths["retimed_with_audio"])
+            
             # Create triple diagnostic: Original + Detection + AI Repair
-            progress(0.85, desc="7/7: Creating AI diagnostic (Original + Detection + Repair)...")
+            progress(0.9, desc="8/8: Creating AI diagnostic (Original + Detection + Repair)...")
             marked_frames, report = create_triple_diagnostic(
-                paths["retimed_video"],  # Use synchronized video as source
-                paths["timecodes"],      # Analyze timecodes for predictions
-                diag_output_path,       # Create triple comparison video
-                RIFE_MODEL              # Use RIFE for AI repair
+                paths["retimed_with_audio"],  # Use synchronized video WITH AUDIO as source
+                paths["timecodes"],           # Analyze timecodes for predictions
+                diag_output_path,            # Create triple comparison video
+                RIFE_MODEL                   # Use RIFE for AI repair
             )
             
             duration = time.time() - start_time
