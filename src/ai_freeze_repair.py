@@ -63,15 +63,28 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     logging.info(f"   FPS: {fps}")
     logging.info(f"   Video duration: {len(all_frames)/fps:.3f} seconds")
     
-    # Create output video with better codec and explicit flush
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    # Try different codecs if mp4v fails
+    codecs_to_try = ['mp4v', 'XVID', 'MJPG', 'X264']
+    out = None
     
-    if not out.isOpened():
-        logging.error("❌ VideoWriter failed to open!")
-        raise Exception("VideoWriter initialization failed")
+    for codec in codecs_to_try:
+        logging.info(f"Trying codec: {codec}")
+        fourcc = cv2.VideoWriter_fourcc(*codec) if len(codec) == 4 else cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        
+        if out.isOpened():
+            logging.info(f"✅ VideoWriter opened successfully with codec: {codec}")
+            break
+        else:
+            logging.warning(f"⚠️ Failed to open with codec: {codec}")
+            out.release()
+            out = None
     
-    logging.info(f"✅ VideoWriter opened successfully:")
+    if out is None:
+        logging.error("❌ VideoWriter failed to open with any codec!")
+        raise Exception("VideoWriter initialization failed with all codecs")
+        
+    logging.info(f"✅ Using VideoWriter with resolution: {width}x{height}, FPS: {fps}")
     
     repaired_count = 0
     written_frames = 0
@@ -112,10 +125,19 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             else:
                 logging.warning(f"   ❌ Frame {frame_idx} not found in sequences - skipping repair")
         
+        # Verify frame properties before writing
+        if frame_idx == 0 or frame_idx in frames_to_repair:
+            frame_shape = current_frame.shape
+            frame_dtype = current_frame.dtype
+            logging.info(f"   Frame {frame_idx} properties: {frame_shape}, dtype: {frame_dtype}")
+            
+            if frame_shape[:2] != (height, width):
+                logging.warning(f"⚠️ Frame {frame_idx} size mismatch: expected ({height},{width}), got {frame_shape[:2]}")
+        
         # Write frame with verification
         success = out.write(current_frame)
         if not success:
-            logging.warning(f"⚠️ Failed to write frame {frame_idx}!")
+            logging.warning(f"⚠️ Failed to write frame {frame_idx}! Shape: {current_frame.shape}, dtype: {current_frame.dtype}")
         written_frames += 1
         
         if frame_idx % 50 == 0:
