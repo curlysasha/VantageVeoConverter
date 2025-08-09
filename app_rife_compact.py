@@ -21,6 +21,7 @@ from src.audio_sync import *
 from src.comparison import create_comparison_grid
 from src.diagnostic_visualizer import create_diagnostic_video
 from src.simple_diagnostic import create_simple_diagnostic
+from src.comparison_diagnostic import create_comparison_diagnostic
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -233,11 +234,11 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             progress(0.75, desc="6/7: Creating synchronized video...")
             retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
             
-            # Analyze synchronized video and copy it (no visual changes)
-            progress(0.85, desc="7/7: Analyzing synchronized video for freezes...")
-            marked_frames, report = create_simple_diagnostic(
-                paths["retimed_video"],  # Analyze the synchronized video
-                diag_output_path        # Copy it without visual changes
+            # Create side-by-side comparison showing synchronized video with freeze markers
+            progress(0.85, desc="7/7: Creating side-by-side freeze comparison...")
+            marked_frames, report = create_comparison_diagnostic(
+                paths["retimed_video"],  # Use synchronized video as source
+                diag_output_path        # Create comparison video
             )
             
             duration = time.time() - start_time
