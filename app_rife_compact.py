@@ -236,7 +236,6 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
             
             # Verify the retimed video was created
-            import os
             if os.path.exists(paths["retimed_video"]):
                 logging.info(f"✅ Retimed video created: {paths['retimed_video']} ({os.path.getsize(paths['retimed_video'])} bytes)")
             else:
