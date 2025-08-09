@@ -43,6 +43,7 @@ except ImportError as e:
 from src.comfy_rife import ComfyRIFE
 from src.timing_analyzer import analyze_timing_changes
 from src.ai_freeze_repair import repair_freezes_with_rife
+from src.timecode_freeze_predictor import predict_freezes_from_timecodes
 from src.audio_sync import *
 from src.diagnostic_visualizer import create_diagnostic_video
 from src.simple_diagnostic import create_simple_diagnostic
@@ -144,20 +145,13 @@ def synchronization_workflow(input_video_path, target_audio_path, use_rife=True,
             interpolation_applied = False
             
             if use_rife:
-                progress(0.75, desc="6/8: Analyzing for adaptive RIFE interpolation...")
-                problem_segments = analyze_timing_changes(paths["timecodes"], rife_mode="adaptive", video_path=input_video_path)
+                progress(0.75, desc="6/8: Predicting freezes for RIFE repair...")
+                # Use same logic as diagnostic mode - predict freezes from timecodes
+                freeze_predictions = predict_freezes_from_timecodes(paths["timecodes"])
                 
-                if problem_segments:
-                    progress(0.8, desc="6/8: Applying adaptive RIFE interpolation...")
-                    # Convert problem_segments to freeze_predictions format
-                    freeze_predictions = []
-                    for segment in problem_segments:
-                        segment_predictions = []
-                        for frame_idx in range(segment['start_frame'], segment['end_frame']):
-                            segment_predictions.append({'frame': frame_idx, 'reason': 'adaptive'})
-                        freeze_predictions.append({'predictions': segment_predictions})
-                    
-                    # Use new RIFE repair system
+                if freeze_predictions:
+                    progress(0.8, desc="6/8: Applying RIFE repair to detected freezes...")
+                    # Use RIFE repair system exactly like diagnostic mode
                     interpolation_applied = repair_freezes_with_rife(
                         input_video_path, freeze_predictions, paths["interpolated_video"], RIFE_MODEL
                     )

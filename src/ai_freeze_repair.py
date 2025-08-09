@@ -35,6 +35,26 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     logging.info(f"Will repair {len(frames_to_repair)} frozen frames")
     logging.info(f"Frames to repair: {sorted(list(frames_to_repair))[:10]}...")  # Show first 10
     
+    # Check if entire video is marked as frozen - this is usually wrong detection
+    total_frames_in_video = len(frames_to_repair)  # This will be updated below
+    
+    # Load frame count first to check percentage
+    cap = cv2.VideoCapture(video_path)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.release()
+    
+    freeze_percentage = (len(frames_to_repair) / total_frames) * 100
+    logging.info(f"Freeze coverage: {freeze_percentage:.1f}% of video ({len(frames_to_repair)}/{total_frames} frames)")
+    
+    # If more than 80% of video is marked as frozen, probably false detection
+    if freeze_percentage > 80:
+        logging.warning("⚠️ Over 80% of video marked as frozen - likely false detection!")
+        logging.warning("⚠️ This usually means the video doesn't need RIFE repair.")
+        logging.info("Copying original video without changes...")
+        import shutil
+        shutil.copy2(video_path, output_path)
+        return False
+    
     # Group consecutive frozen frames into sequences
     freeze_sequences = group_consecutive_frames(frames_to_repair)
     logging.info(f"Detected {len(freeze_sequences)} freeze sequences")

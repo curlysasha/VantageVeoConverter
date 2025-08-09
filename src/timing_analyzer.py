@@ -21,7 +21,7 @@ def analyze_timing_changes(timecode_path, fps=25, rife_mode="adaptive", video_pa
         threshold = 0.10  # 10% deviation - balanced for diagnostic
         merge_distance = 1   # Small merge distance - don't group everything together!
     else:  # adaptive (default and only supported mode)
-        threshold = 0.15  # 15% deviation - moderate sensitivity
+        threshold = 0.25  # 25% deviation - less sensitive, avoid false positives
         merge_distance = 5  # Larger merge distance for adaptive
     
     # Analyze frame duplication and timing irregularities
