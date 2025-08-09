@@ -229,24 +229,15 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
                 smooth_interpolation=True
             )
             
-            # Apply timecodes to create retimed video FIRST
-            progress(0.75, desc="6/7: Creating retimed video (this is where freezes appear)...")
-            logging.info(f"🎬 Creating retimed video from: {input_video_path}")
-            logging.info(f"🎬 Using timecodes: {paths['timecodes']}")
-            logging.info(f"🎬 Output will be: {paths['retimed_video']}")
+            # Create retimed video (same as regular sync)
+            progress(0.75, desc="6/7: Creating synchronized video...")
             retime_video(input_video_path, paths["timecodes"], paths["retimed_video"])
             
-            # Verify the retimed video was created
-            if os.path.exists(paths["retimed_video"]):
-                logging.info(f"✅ Retimed video created: {paths['retimed_video']} ({os.path.getsize(paths['retimed_video'])} bytes)")
-            else:
-                logging.error(f"❌ Retimed video NOT created at: {paths['retimed_video']}")
-            
-            # Simple diagnostic - just mark frozen frames in retimed video
-            progress(0.85, desc="7/7: Marking frozen frames...")
+            # Add diagnostic markers to synchronized video
+            progress(0.85, desc="7/7: Adding diagnostic markers...")
             marked_frames, report = create_simple_diagnostic(
-                paths["retimed_video"],  # Use the retimed video (has freezes from sync)
-                diag_output_path        # Mark frozen frames with red borders
+                paths["retimed_video"],  # Use the synchronized video with freezes!
+                diag_output_path        # Add red markers to it
             )
             
             duration = time.time() - start_time
