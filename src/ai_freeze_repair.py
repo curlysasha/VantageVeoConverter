@@ -56,13 +56,21 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
         frame_idx += 1
     cap.release()
     
-    logging.info(f"Loaded {len(all_frames)} frames")
+    logging.info(f"📊 FRAME COUNT ANALYSIS:")
+    logging.info(f"   Input video: {video_path}")
+    logging.info(f"   Total frames loaded: {len(all_frames)}")
+    logging.info(f"   Original total_frames: {total_frames}")
+    logging.info(f"   FPS: {fps}")
+    logging.info(f"   Video duration: {len(all_frames)/fps:.3f} seconds")
     
     # Create output video
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
     
     repaired_count = 0
+    written_frames = 0
+    
+    logging.info(f"🔧 Starting frame processing loop for {len(all_frames)} frames...")
     
     # Process each frame
     for frame_idx in range(len(all_frames)):
@@ -99,16 +107,36 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
                 logging.warning(f"   ❌ Frame {frame_idx} not found in sequences - skipping repair")
         
         out.write(current_frame)
+        written_frames += 1
         
-        if frame_idx % 100 == 0:
-            logging.info(f"   Progress: {frame_idx}/{total_frames} ({repaired_count} repaired)")
+        if frame_idx % 50 == 0:
+            logging.info(f"   Progress: {frame_idx+1}/{len(all_frames)} frames processed, {written_frames} written, {repaired_count} repaired")
     
     out.release()
     
+    logging.info(f"🔧 Frame processing loop completed:")
+    logging.info(f"   Total frames processed: {len(all_frames)}")
+    logging.info(f"   Total frames written: {written_frames}")
+    logging.info(f"   Should match: {len(all_frames) == written_frames}")
+    
+    # Check final frame counts
+    cap_check = cv2.VideoCapture(output_path)
+    output_frame_count = int(cap_check.get(cv2.CAP_PROP_FRAME_COUNT))
+    output_fps = cap_check.get(cv2.CAP_PROP_FPS)
+    cap_check.release()
+    
     repair_pct = (repaired_count / len(frames_to_repair) * 100) if frames_to_repair else 0
     
-    logging.info(f"✅ AI repair complete!")
-    logging.info(f"   Repaired: {repaired_count}/{len(frames_to_repair)} frames ({repair_pct:.1f}%)")
+    logging.info(f"📊 FINAL FRAME COUNT COMPARISON:")
+    logging.info(f"   INPUT video frames: {len(all_frames)}")
+    logging.info(f"   WRITTEN frames: {written_frames}")  
+    logging.info(f"   OUTPUT video frames (OpenCV): {output_frame_count}")
+    logging.info(f"   OUTPUT FPS: {output_fps}")
+    logging.info(f"   INPUT duration: {len(all_frames)/fps:.3f}s")
+    logging.info(f"   OUTPUT duration: {output_frame_count/output_fps:.3f}s")
+    logging.info(f"   Frame loss: {len(all_frames) - output_frame_count}")
+    logging.info(f"   Time difference: {(len(all_frames)/fps) - (output_frame_count/output_fps):.3f}s")
+    logging.info(f"✅ AI repair complete! Repaired: {repaired_count}/{len(frames_to_repair)} frames ({repair_pct:.1f}%)")
     
     return True
 

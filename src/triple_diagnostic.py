@@ -93,7 +93,28 @@ def create_triple_comparison_video(original_path, freeze_frames, frame_predictio
     fps = cap_original.get(cv2.CAP_PROP_FPS)
     width = int(cap_original.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap_original.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames = int(cap_original.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    # Check frame counts of both videos
+    original_frame_count = int(cap_original.get(cv2.CAP_PROP_FRAME_COUNT))
+    repaired_frame_count = int(cap_repaired.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    logging.info(f"🔍 TRIPLE DIAGNOSTIC FRAME ANALYSIS:")
+    logging.info(f"   Original video: {original_path}")
+    logging.info(f"   Repaired video: {repaired_path}")
+    logging.info(f"   Original frames: {original_frame_count}")
+    logging.info(f"   Repaired frames: {repaired_frame_count}")
+    logging.info(f"   Frame difference: {original_frame_count - repaired_frame_count}")
+    logging.info(f"   Original FPS: {fps}")
+    
+    if original_frame_count != repaired_frame_count:
+        logging.warning(f"⚠️ FRAME COUNT MISMATCH DETECTED!")
+        logging.warning(f"   This will cause synchronization issues!")
+        logging.warning(f"   Original duration: {original_frame_count/fps:.3f}s")
+        logging.warning(f"   Repaired duration: {repaired_frame_count/fps:.3f}s")
+    
+    # Use the LONGER video as reference for total frames
+    total_frames = max(original_frame_count, repaired_frame_count)
+    logging.info(f"   Using {total_frames} total frames for comparison")
     
     # Create output video - triple height (temporary, without audio)
     new_height = height * 3
@@ -110,8 +131,22 @@ def create_triple_comparison_video(original_path, freeze_frames, frame_predictio
         ret1, frame_original = cap_original.read()
         ret2, frame_repaired = cap_repaired.read()
         
-        if not ret1 or not ret2:
+        # Stop only if BOTH videos are exhausted
+        if not ret1 and not ret2:
             break
+        
+        # Handle case where one video ended but other continues
+        if not ret1:
+            # Original ended, use last frame
+            frame_original = np.zeros((height, width, 3), dtype=np.uint8)
+            cv2.putText(frame_original, "ORIGINAL VIDEO ENDED", (10, height//2), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+        
+        if not ret2:
+            # Repaired ended, use last frame  
+            frame_repaired = np.zeros((height, width, 3), dtype=np.uint8)
+            cv2.putText(frame_repaired, "REPAIRED VIDEO ENDED", (10, height//2),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
         
         # Top panel: Clean synchronized video
         top_frame = frame_original.copy()
