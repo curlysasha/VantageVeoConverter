@@ -20,6 +20,7 @@ from src.video_processor import interpolate_video, regenerate_timecodes_for_inte
 from src.audio_sync import *
 from src.comparison import create_comparison_grid
 from src.diagnostic_visualizer import create_diagnostic_video
+from src.simple_diagnostic import create_simple_diagnostic
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -241,13 +242,11 @@ def diagnostic_workflow(input_video_path, target_audio_path, rife_mode="adaptive
             else:
                 logging.error(f"❌ Retimed video NOT created at: {paths['retimed_video']}")
             
-            # Create diagnostic video - analyze the RETIMED video for problems!
-            progress(0.85, desc="7/7: Marking freezes in RETIMED video...")
-            marked_frames, report = create_diagnostic_video(
-                paths["retimed_video"],  # Analyze the RETIMED video with freezes!
-                diag_output_path,
-                paths["timecodes"],
-                rife_mode="diagnostic"  # Always use diagnostic mode for visualization
+            # Simple diagnostic - just mark frozen frames in retimed video
+            progress(0.85, desc="7/7: Marking frozen frames...")
+            marked_frames, report = create_simple_diagnostic(
+                paths["retimed_video"],  # Use the retimed video (has freezes from sync)
+                diag_output_path        # Mark frozen frames with red borders
             )
             
             duration = time.time() - start_time
