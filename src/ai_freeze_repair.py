@@ -64,47 +64,21 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     logging.info(f"   FPS: {fps}")
     logging.info(f"   Video duration: {len(all_frames)/fps:.3f} seconds")
     
-    # Try different approaches to VideoWriter
+    # OpenCV VideoWriter is broken in this environment, use FFmpeg directly
+    logging.info("🔧 OpenCV VideoWriter unreliable, switching to FFmpeg direct approach...")
     
-    # First try: standard approach with temp file
+    # Create temporary directory for individual frames
     import tempfile
-    temp_output_path = output_path.replace('.mp4', '_temp_raw.mp4')
+    import subprocess
     
-    # Try different codecs if mp4v fails
-    codecs_to_try = ['mp4v', 'XVID', 'MJPG', 'X264']
-    out = None
-    successful_codec = None
+    frames_dir = tempfile.mkdtemp(prefix="rife_frames_")
+    temp_output_path = output_path.replace('.mp4', '_temp_ffmpeg.mp4')
     
-    for codec in codecs_to_try:
-        logging.info(f"Trying codec: {codec}")
-        fourcc = cv2.VideoWriter_fourcc(*codec) if len(codec) == 4 else cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
-        
-        if out.isOpened():
-            # Test writing a dummy frame
-            test_frame = np.zeros((height, width, 3), dtype=np.uint8)
-            test_success = out.write(test_frame)
-            
-            if test_success:
-                logging.info(f"✅ VideoWriter opened successfully with codec: {codec}")
-                successful_codec = codec
-                break
-            else:
-                logging.warning(f"⚠️ Codec {codec} opened but can't write frames")
-                out.release()
-                out = None
-        else:
-            logging.warning(f"⚠️ Failed to open with codec: {codec}")
-            if out:
-                out.release()
-            out = None
+    logging.info(f"✅ Will save frames to: {frames_dir}")
+    logging.info(f"✅ Will create video: {temp_output_path}")
     
-    if out is None:
-        logging.error("❌ VideoWriter failed to open with any codec!")
-        raise Exception("VideoWriter initialization failed with all codecs")
-        
-    logging.info(f"✅ Using VideoWriter with codec: {successful_codec}, resolution: {width}x{height}, FPS: {fps}")
-    logging.info(f"✅ Output path: {temp_output_path}")
+    # We'll save frames as individual images instead of using VideoWriter
+    out = None  # No VideoWriter needed
     
     repaired_count = 0
     written_frames = 0
@@ -154,40 +128,60 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             if frame_shape[:2] != (height, width):
                 logging.warning(f"⚠️ Frame {frame_idx} size mismatch: expected ({height},{width}), got {frame_shape[:2]}")
         
-        # Ensure frame is contiguous and in correct format
-        if not current_frame.flags['C_CONTIGUOUS']:
-            current_frame = np.ascontiguousarray(current_frame)
+        # Save frame as individual PNG image
+        frame_filename = os.path.join(frames_dir, f"frame_{frame_idx:06d}.png")
+        success = cv2.imwrite(frame_filename, current_frame)
         
-        # Ensure correct data type
-        if current_frame.dtype != np.uint8:
-            current_frame = current_frame.astype(np.uint8)
-            
-        # Write frame with verification
-        success = out.write(current_frame)
         if not success:
-            logging.warning(f"⚠️ Failed to write frame {frame_idx}! Shape: {current_frame.shape}, dtype: {current_frame.dtype}, contiguous: {current_frame.flags['C_CONTIGUOUS']}")
-            
-            # Try alternative write approach
-            try:
-                out.write(current_frame.copy())
-                logging.info(f"✅ Alternative write succeeded for frame {frame_idx}")
-            except Exception as e:
-                logging.error(f"❌ Alternative write also failed for frame {frame_idx}: {e}")
-        written_frames += 1
+            logging.warning(f"⚠️ Failed to save frame {frame_idx} as PNG!")
+        else:
+            written_frames += 1
         
         if frame_idx % 50 == 0:
             logging.info(f"   Progress: {frame_idx+1}/{len(all_frames)} frames processed, {written_frames} written, {repaired_count} repaired")
     
-    # Force flush and release
-    out.release()
-    del out  # Explicit cleanup
-    
+    # Create video from individual frames using FFmpeg
     logging.info(f"🔧 Frame processing loop completed:")
     logging.info(f"   Total frames processed: {len(all_frames)}")
     logging.info(f"   Total frames written: {written_frames}")
     logging.info(f"   Should match: {len(all_frames) == written_frames}")
     
-    # Wait a moment for file system to flush
+    # Create video from PNG sequence using FFmpeg
+    logging.info(f"🎬 Creating video from {written_frames} frames using FFmpeg...")
+    
+    try:
+        ffmpeg_cmd = [
+            'ffmpeg', '-y',
+            '-framerate', str(fps),
+            '-i', os.path.join(frames_dir, 'frame_%06d.png'),
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-crf', '18',  # High quality
+            temp_output_path
+        ]
+        
+        logging.info(f"🔧 Running FFmpeg: {' '.join(ffmpeg_cmd)}")
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode == 0:
+            logging.info("✅ FFmpeg video creation successful!")
+        else:
+            logging.error(f"❌ FFmpeg failed: {result.stderr}")
+            raise Exception(f"FFmpeg video creation failed: {result.stderr}")
+            
+    except Exception as e:
+        logging.error(f"❌ Video creation failed: {e}")
+        raise Exception(f"Video creation failed: {e}")
+    
+    # Cleanup frame files
+    try:
+        import shutil
+        shutil.rmtree(frames_dir)
+        logging.info(f"✅ Cleaned up frame directory: {frames_dir}")
+    except Exception as e:
+        logging.warning(f"⚠️ Could not cleanup frames directory: {e}")
+    
+    # Wait a moment for file system
     import time
     time.sleep(0.1)
     
@@ -202,31 +196,11 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     output_fps = cap_check.get(cv2.CAP_PROP_FPS)
     cap_check.release()
     
-    # If frame count mismatch, try to fix with FFmpeg remux
+    # Frame count check - should be perfect with FFmpeg approach
     if abs(len(all_frames) - output_frame_count) > 0:
-        logging.warning(f"⚠️ Frame count mismatch detected, attempting FFmpeg fix...")
-        temp_path = output_path.replace('.mp4', '_temp_remux.mp4')
-        
-        try:
-            import subprocess
-            # Remux without re-encoding to preserve all frames
-            cmd = ['ffmpeg', '-y', '-i', output_path, '-c', 'copy', '-avoid_negative_ts', 'make_zero', temp_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            
-            if result.returncode == 0:
-                import shutil
-                shutil.move(temp_path, output_path)
-                logging.info("✅ FFmpeg remux completed")
-                
-                # Recheck frame count
-                cap_check = cv2.VideoCapture(output_path)
-                output_frame_count = int(cap_check.get(cv2.CAP_PROP_FRAME_COUNT))
-                output_fps = cap_check.get(cv2.CAP_PROP_FPS)
-                cap_check.release()
-            else:
-                logging.warning(f"⚠️ FFmpeg remux failed: {result.stderr}")
-        except Exception as e:
-            logging.warning(f"⚠️ FFmpeg fix failed: {e}")
+        logging.warning(f"⚠️ Frame count mismatch: expected {len(all_frames)}, got {output_frame_count}")
+    else:
+        logging.info(f"✅ Frame count perfect: {output_frame_count} frames")
     
     # Move temp file to final location
     if temp_output_path != output_path:
