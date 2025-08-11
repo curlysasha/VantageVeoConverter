@@ -41,6 +41,27 @@ def transcribe_audio(audio_path, output_transcript_path, whisper_model):
 
 def forced_alignment(audio_path, transcript_path, output_alignment_path):
     """Perform forced alignment using Aeneas."""
+    # Check if aeneas is available
+    try:
+        import aeneas
+        logging.info("Aeneas module available")
+    except ImportError:
+        error_msg = """
+❌ Aeneas not installed! Please install it:
+
+Quick fix:
+  pip install numpy>=1.24,<2.3 scipy>=1.9.0
+  pip install --no-build-isolation aeneas>=1.7.3
+
+Or run the automatic installer:
+  python install_dependencies.py
+
+System dependencies (Ubuntu/Debian):
+  sudo apt-get install espeak libasound2-dev libespeak-dev
+"""
+        logging.error(error_msg)
+        raise RuntimeError("Aeneas not available. Run: python install_dependencies.py")
+    
     command = [
         "python3", "-m", "aeneas.tools.execute_task",
         audio_path, transcript_path,

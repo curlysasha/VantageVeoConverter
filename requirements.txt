@@ -1,8 +1,12 @@
 # VantageVeoConverter Dependencies
 
-# Core libraries - MUST BE FIRST
+# CRITICAL: Install in this exact order!
+# Core libraries MUST be installed FIRST
 numpy>=1.24,<2.3
 scipy>=1.9.0
+
+# Install aeneas separately with --no-build-isolation
+# Run: pip install --no-build-isolation aeneas>=1.7.3
 
 # PyTorch
 torch>=1.12.0
@@ -13,10 +17,9 @@ torchaudio>=0.12.0
 opencv-python>=4.5.0
 scikit-image>=0.19.0
 
-# Audio Processing - aeneas needs numpy first
+# Audio Processing 
 openai-whisper>=20230314
 librosa>=0.9.0
-aeneas>=1.7.3
 
 # Web Interface
 gradio>=3.20.0
