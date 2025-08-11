@@ -47,7 +47,7 @@ from src.timecode_freeze_predictor import predict_freezes_from_timecodes
 from src.audio_sync import *
 from src.physical_retime import create_physical_retime
 from src.triple_diagnostic import create_triple_diagnostic
-from src.binary_utils import check_all_binaries, get_ffmpeg
+from src.binary_utils import check_all_binaries, get_ffmpeg, get_ffprobe
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -336,10 +336,14 @@ def diagnostic_workflow(input_video_path, target_audio_path, use_rife=True, prog
                     
                     # Verify audio streams in result
                     import subprocess
-                    verify_cmd = ['ffprobe', '-v', 'quiet', '-select_streams', 'a', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', paths["retimed_with_audio"]]
-                    verify_result = subprocess.run(verify_cmd, capture_output=True, text=True, timeout=30)
+                    ffprobe_path = get_ffprobe()
+                    if ffprobe_path:
+                        verify_cmd = [ffprobe_path, '-v', 'quiet', '-select_streams', 'a', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', paths["retimed_with_audio"]]
+                        verify_result = subprocess.run(verify_cmd, capture_output=True, text=True, timeout=30)
+                    else:
+                        verify_result = None
                     
-                    if verify_result.stdout.strip():
+                    if verify_result and verify_result.stdout.strip():
                         logging.info(f"✅ Audio verified in retimed video: {verify_result.stdout.strip()}")
                     else:
                         logging.warning("⚠️ No audio detected in retimed video!")
