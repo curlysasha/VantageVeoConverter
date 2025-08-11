@@ -27,10 +27,10 @@ def install_dependencies():
     """Install all dependencies in correct order"""
     print("🚀 VantageVeoConverter Dependency Installer\n")
     
-    # Step 1: Core dependencies first
+    # Step 1: Core dependencies first (older numpy for aeneas compatibility)
     print("1️⃣ Installing core dependencies...")
     if not run_pip_command([
-        "numpy>=1.24,<2.3",
+        "numpy==1.21.6",  # Older numpy compatible with aeneas
         "scipy>=1.9.0"
     ], "Core libraries (numpy, scipy)"):
         return False
@@ -57,17 +57,16 @@ def install_dependencies():
         if run_pip_command(["--no-deps", "aeneas>=1.7.3"], "aeneas (no-deps)"):
             aeneas_installed = True
     
-    # Approach 3: Force reinstall numpy then aeneas
+    # Approach 3: Force reinstall older numpy then aeneas
     if not aeneas_installed:
-        print("   Trying force numpy reinstall...")
-        run_pip_command(["--force-reinstall", "numpy>=1.24,<2.3"], "numpy (force reinstall)")
-        if run_pip_command(["aeneas>=1.7.3"], "aeneas (after numpy reinstall)"):
+        print("   Trying older numpy for compatibility...")
+        run_pip_command(["--force-reinstall", "numpy==1.21.6"], "numpy (older version)")
+        if run_pip_command(["aeneas>=1.7.3"], "aeneas (with older numpy)"):
             aeneas_installed = True
     
     if not aeneas_installed:
-        print("❌ Could not install aeneas. You may need to install system dependencies:")
-        print("   Ubuntu/Debian: sudo apt-get install espeak libasound2-dev libespeak-dev")
-        print("   Or use conda: conda install -c conda-forge aeneas")
+        print("❌ Could not install aeneas. Manual install:")
+        print("   pip install numpy==1.21.6 && pip install aeneas")
         return False
     
     print("\n✅ All dependencies installed successfully!")

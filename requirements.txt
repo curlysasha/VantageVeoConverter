@@ -2,7 +2,8 @@
 
 # CRITICAL: Install in this exact order!
 # Core libraries MUST be installed FIRST
-numpy>=1.24,<2.3
+# NOTE: Using older numpy for aeneas compatibility
+numpy==1.21.6
 scipy>=1.9.0
 
 # Install aeneas separately with --no-build-isolation
