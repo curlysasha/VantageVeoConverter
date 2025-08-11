@@ -100,9 +100,10 @@ def create_physical_retime(input_video_path, timecode_path, output_path):
                 is_duplicate = True
                 duplicate_count += 1
         
-        # Save frame as PNG
+        # Save frame as PNG with maximum quality
         frame_filename = os.path.join(frames_dir, f"frame_{output_frame_count:06d}.png")
-        cv2.imwrite(frame_filename, all_frames[input_frame_idx])
+        # PNG compression level 0 = no compression, fastest and highest quality
+        cv2.imwrite(frame_filename, all_frames[input_frame_idx], [cv2.IMWRITE_PNG_COMPRESSION, 0])
         output_frame_count += 1
         
         if output_frame_count % 100 == 0:
@@ -116,14 +117,17 @@ def create_physical_retime(input_video_path, timecode_path, output_path):
     if not ffmpeg_path:
         raise RuntimeError("ffmpeg not found! Place ffmpeg binary in bin/ directory")
     
-    # High quality FFmpeg command
+    # Ultra high quality FFmpeg command
     ffmpeg_cmd = [
         ffmpeg_path, '-y',
         '-framerate', str(target_fps),
         '-i', os.path.join(frames_dir, 'frame_%06d.png'),
         '-c:v', 'libx264',
-        '-preset', 'slow',        # Better compression
-        '-crf', '15',            # High quality (lower = better)
+        '-preset', 'veryslow',     # Best compression (slower but better)
+        '-crf', '12',             # Ultra high quality (12 vs 15)
+        '-tune', 'film',          # Optimize for film content
+        '-profile:v', 'high',     # H.264 high profile for better quality
+        '-level', '4.1',          # Modern compatibility
         '-pix_fmt', 'yuv420p',
         output_path
     ]

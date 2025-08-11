@@ -151,7 +151,7 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
         
         # Save frame as individual PNG image
         frame_filename = os.path.join(frames_dir, f"frame_{frame_idx:06d}.png")
-        success = cv2.imwrite(frame_filename, current_frame)
+        success = cv2.imwrite(frame_filename, current_frame, [cv2.IMWRITE_PNG_COMPRESSION, 0])
         
         if not success:
             logging.warning(f"⚠️ Failed to save frame {frame_idx} as PNG!")
@@ -176,14 +176,17 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
         if not ffmpeg_path:
             raise RuntimeError("ffmpeg not found! Place ffmpeg binary in bin/ directory")
         
-        # Create video WITHOUT audio - exactly like diagnostic mode
+        # Create video WITHOUT audio - ultra high quality
         ffmpeg_cmd = [
             ffmpeg_path, '-y',
             '-framerate', str(fps),
             '-i', os.path.join(frames_dir, 'frame_%06d.png'),
             '-c:v', 'libx264',
-            '-preset', 'slow',      # Better compression  
-            '-crf', '15',           # Higher quality (was 18)
+            '-preset', 'veryslow',    # Best compression
+            '-crf', '12',            # Ultra high quality (was 15)
+            '-tune', 'film',         # Optimize for film content
+            '-profile:v', 'high',    # H.264 high profile
+            '-level', '4.1',         # Modern compatibility
             '-pix_fmt', 'yuv420p',
             temp_output_path
         ]
