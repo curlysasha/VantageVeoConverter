@@ -1,6 +1,7 @@
 """
 Create physically retimed video with actual frame duplicates
 """
+import os
 import cv2
 import numpy as np
 import logging
