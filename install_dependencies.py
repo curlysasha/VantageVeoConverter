@@ -27,10 +27,10 @@ def install_dependencies():
     """Install all dependencies in correct order"""
     print("🚀 VantageVeoConverter Dependency Installer\n")
     
-    # Step 1: Core dependencies first (older numpy for aeneas compatibility)
+    # Step 1: Install modern numpy first
     print("1️⃣ Installing core dependencies...")
     if not run_pip_command([
-        "numpy==1.21.1",  # Older numpy compatible with aeneas
+        "numpy>=1.24,<2.3",
         "scipy>=1.9.0"
     ], "Core libraries (numpy, scipy)"):
         return False
@@ -40,29 +40,43 @@ def install_dependencies():
     if not run_pip_command(["-r", "requirements.txt"], "Main dependencies"):
         print("⚠️ Some dependencies failed, continuing...")
     
-    # Step 3: Install aeneas with special handling
-    print("\n3️⃣ Installing aeneas with special handling...")
+    # Step 3: Install aeneas with multiple strategies
+    print("\n3️⃣ Installing aeneas...")
     
-    # Try different approaches for aeneas
     aeneas_installed = False
     
-    # Approach 1: --no-build-isolation
-    print("   Trying --no-build-isolation...")
-    if run_pip_command(["--no-build-isolation", "aeneas>=1.7.3"], "aeneas (no-build-isolation)"):
+    # Strategy 1: Try newest aeneas version (might be fixed)
+    print("   Trying latest aeneas...")
+    if run_pip_command(["aeneas"], "aeneas (latest)"):
         aeneas_installed = True
     
-    # Approach 2: --no-deps (if approach 1 failed)
+    # Strategy 2: Install from git (development version)
     if not aeneas_installed:
-        print("   Trying --no-deps...")
-        if run_pip_command(["--no-deps", "aeneas>=1.7.3"], "aeneas (no-deps)"):
+        print("   Trying aeneas from git...")
+        if run_pip_command(["git+https://github.com/readbeyond/aeneas.git"], "aeneas (git)"):
             aeneas_installed = True
     
-    # Approach 3: Force reinstall older numpy then aeneas
+    # Strategy 3: Try conda-forge version via pip
     if not aeneas_installed:
-        print("   Trying older numpy for compatibility...")
-        run_pip_command(["--force-reinstall", "numpy==1.21.1"], "numpy (older version)")
-        if run_pip_command(["aeneas>=1.7.3"], "aeneas (with older numpy)"):
+        print("   Trying to install via alternative method...")
+        # Install build dependencies first
+        run_pip_command(["setuptools<60", "wheel", "cython"], "build tools")
+        if run_pip_command(["aeneas>=1.7.3"], "aeneas (with build tools)"):
             aeneas_installed = True
+    
+    # Strategy 4: Try conda if available
+    if not aeneas_installed:
+        print("   Trying conda if available...")
+        try:
+            result = subprocess.run(["conda", "install", "-c", "conda-forge", "-y", "aeneas"], 
+                                  capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                print("✅ aeneas installed via conda")
+                aeneas_installed = True
+            else:
+                print("   conda install failed")
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            print("   conda not available")
     
     if not aeneas_installed:
         print("❌ Could not install aeneas. Manual install:")
