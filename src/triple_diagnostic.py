@@ -9,6 +9,7 @@ import os
 import tempfile
 from .timecode_freeze_predictor import predict_freezes_from_timecodes
 from .ai_freeze_repair import repair_freezes_with_rife
+from .binary_utils import get_ffmpeg
 
 def create_triple_diagnostic(synchronized_video_path, timecode_path, output_path, rife_model):
     """
@@ -216,8 +217,12 @@ def create_triple_comparison_video(original_path, freeze_frames, frame_predictio
     # Add audio from original video to the final output
     logging.info("🔊 Adding audio to triple diagnostic video...")
     try:
+        ffmpeg_path = get_ffmpeg()
+        if not ffmpeg_path:
+            raise RuntimeError("ffmpeg not found! Place ffmpeg binary in bin/ directory")
+        
         cmd = [
-            'ffmpeg', '-y',
+            ffmpeg_path, '-y',
             '-i', temp_video_path,     # Video input (no audio)
             '-i', original_path,       # Audio source (original synchronized video)
             '-c:v', 'copy',           # Copy video stream as-is

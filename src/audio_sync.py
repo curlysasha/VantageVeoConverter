@@ -17,8 +17,12 @@ from .binary_utils import get_ffmpeg, get_ffprobe, get_mp4fpsmod
 
 def extract_and_standardize_audio(input_path, output_audio_path):
     """Extract and standardize audio to 16kHz mono PCM."""
+    ffmpeg_path = get_ffmpeg()
+    if not ffmpeg_path:
+        raise RuntimeError("ffmpeg not found! Place ffmpeg binary in bin/ directory")
+    
     command = [
-        "ffmpeg", "-y", "-i", input_path, "-vn", "-acodec", "pcm_s16le", 
+        ffmpeg_path, "-y", "-i", input_path, "-vn", "-acodec", "pcm_s16le", 
         "-ar", "16000", "-ac", "1", output_audio_path
     ]
     run_command(command)
@@ -49,8 +53,12 @@ def validate_video_format(video_path):
     """Validate video format and codec compatibility."""
     logging.info("Validating video format...")
     
+    ffprobe_path = get_ffprobe()
+    if not ffprobe_path:
+        raise RuntimeError("ffprobe not found! Place ffprobe binary in bin/ directory")
+    
     command = [
-        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        ffprobe_path, "-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=codec_name,codec_type,r_frame_rate,avg_frame_rate",
         "-show_entries", "format=format_name,duration",
         "-of", "json", video_path
@@ -236,28 +244,12 @@ def generate_vfr_timecodes(video_path, align_source_path, align_target_path, out
 
 def retime_video(input_video_path, timecode_path, output_retimed_video_path):
     """Apply timestamps using mp4fpsmod."""
-    import shutil
-    import os
-    
-    # First check for local binary in project/bin directory
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    local_binary = os.path.join(project_dir, "bin", "mp4fpsmod")
-    if os.name == 'nt':  # Windows
-        local_binary += ".exe"
-    
-    # Try local binary first, then system PATH
-    if os.path.exists(local_binary):
-        binary = local_binary
-        logging.info(f"Using local mp4fpsmod binary: {binary}")
-    else:
-        binary = shutil.which("mp4fpsmod")
-        if binary:
-            logging.info(f"Using system mp4fpsmod: {binary}")
+    binary = get_mp4fpsmod()
     
     if not binary:
         logging.error("mp4fpsmod not found! Please place binary in project/bin/ directory")
-        logging.error(f"Expected location: {local_binary}")
         # Fallback - just copy the original
+        import shutil
         shutil.copy2(input_video_path, output_retimed_video_path)
         return
     
@@ -287,7 +279,10 @@ def mux_final_output(retimed_video_path, target_audio_path, final_output_path):
     # Check audio in target file first
     try:
         import json
-        audio_check_cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_streams', target_audio_path]
+        ffprobe_path = get_ffprobe()
+        if not ffprobe_path:
+            raise RuntimeError("ffprobe not found! Place ffprobe binary in bin/ directory")
+        audio_check_cmd = [ffprobe_path, '-v', 'quiet', '-print_format', 'json', '-show_streams', target_audio_path]
         audio_check = subprocess.run(audio_check_cmd, capture_output=True, text=True, timeout=30)
         
         if audio_check.returncode == 0:
@@ -301,8 +296,12 @@ def mux_final_output(retimed_video_path, target_audio_path, final_output_path):
     except Exception as e:
         logging.warning(f"⚠️ Audio probe failed: {e}")
     
+    ffmpeg_path = get_ffmpeg()
+    if not ffmpeg_path:
+        raise RuntimeError("ffmpeg not found! Place ffmpeg binary in bin/ directory")
+    
     command = [
-        "ffmpeg", "-y", "-v", "info",  # More verbose output
+        ffmpeg_path, "-y", "-v", "info",  # More verbose output
         "-i", retimed_video_path, "-i", target_audio_path,
         "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",  # Set audio bitrate
         "-map", "0:v:0", "-map", "1:a:0",

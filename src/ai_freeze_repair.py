@@ -8,6 +8,7 @@ import torch
 import os
 from .timecode_freeze_predictor import predict_freezes_from_timecodes
 from .comfy_rife import ComfyRIFE
+from .binary_utils import get_ffmpeg
 
 def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_model):
     """
@@ -170,9 +171,14 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
     logging.info(f"🎬 Creating video from {written_frames} frames using FFmpeg...")
     
     try:
+        # Get ffmpeg path
+        ffmpeg_path = get_ffmpeg()
+        if not ffmpeg_path:
+            raise RuntimeError("ffmpeg not found! Place ffmpeg binary in bin/ directory")
+        
         # Create video WITHOUT audio - exactly like diagnostic mode
         ffmpeg_cmd = [
-            'ffmpeg', '-y',
+            ffmpeg_path, '-y',
             '-framerate', str(fps),
             '-i', os.path.join(frames_dir, 'frame_%06d.png'),
             '-c:v', 'libx264',

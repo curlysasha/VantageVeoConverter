@@ -47,6 +47,7 @@ from src.timecode_freeze_predictor import predict_freezes_from_timecodes
 from src.audio_sync import *
 from src.physical_retime import create_physical_retime
 from src.triple_diagnostic import create_triple_diagnostic
+from src.binary_utils import check_all_binaries
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -72,23 +73,16 @@ def initialize_models():
 
 def check_dependencies():
     """Check if required external tools are available."""
-    missing = []
+    missing = check_all_binaries()
     
-    # Check for mp4fpsmod - first in local bin/, then system PATH
-    project_dir = os.path.dirname(os.path.abspath(__file__))
-    local_mp4fpsmod = os.path.join(project_dir, "bin", "mp4fpsmod")
-    if os.name == 'nt':
-        local_mp4fpsmod += ".exe"
-    
-    if not os.path.exists(local_mp4fpsmod) and not shutil.which("mp4fpsmod"):
-        missing.append(f"mp4fpsmod (place binary in {project_dir}/bin/)")
-    
-    if not shutil.which("ffmpeg"): missing.append("ffmpeg")
-    # espeak is optional - only warn if missing
-    # if not shutil.which("espeak-ng") and not shutil.which("espeak"):
-    #      missing.append("espeak/espeak-ng")
     if missing:
-        raise EnvironmentError(f"Missing dependencies: {', '.join(missing)}.")
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        error_msg = f"Missing dependencies: {', '.join(missing)}.\n"
+        error_msg += f"Please place binary files in: {project_dir}/bin/\n"
+        error_msg += "Download links:\n"
+        error_msg += "- FFmpeg: https://johnvansickle.com/ffmpeg/releases/ (Linux) or https://www.gyan.dev/ffmpeg/builds/ (Windows)\n"
+        error_msg += "- mp4fpsmod: Build from https://github.com/nu774/mp4fpsmod"
+        raise EnvironmentError(error_msg)
 
 def synchronization_workflow(input_video_path, target_audio_path, use_rife=True, progress=gr.Progress()):
     """Main synchronization workflow with RIFE modes."""
