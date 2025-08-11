@@ -73,7 +73,16 @@ def initialize_models():
 def check_dependencies():
     """Check if required external tools are available."""
     missing = []
-    if not shutil.which("mp4fpsmod"): missing.append("mp4fpsmod")
+    
+    # Check for mp4fpsmod - first in local bin/, then system PATH
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    local_mp4fpsmod = os.path.join(project_dir, "bin", "mp4fpsmod")
+    if os.name == 'nt':
+        local_mp4fpsmod += ".exe"
+    
+    if not os.path.exists(local_mp4fpsmod) and not shutil.which("mp4fpsmod"):
+        missing.append(f"mp4fpsmod (place binary in {project_dir}/bin/)")
+    
     if not shutil.which("ffmpeg"): missing.append("ffmpeg")
     if not shutil.which("espeak-ng") and not shutil.which("espeak"):
          missing.append("espeak/espeak-ng")

@@ -235,10 +235,25 @@ def retime_video(input_video_path, timecode_path, output_retimed_video_path):
     """Apply timestamps using mp4fpsmod."""
     import shutil
     import os
-    binary = shutil.which("mp4fpsmod")
+    
+    # First check for local binary in project/bin directory
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    local_binary = os.path.join(project_dir, "bin", "mp4fpsmod")
+    if os.name == 'nt':  # Windows
+        local_binary += ".exe"
+    
+    # Try local binary first, then system PATH
+    if os.path.exists(local_binary):
+        binary = local_binary
+        logging.info(f"Using local mp4fpsmod binary: {binary}")
+    else:
+        binary = shutil.which("mp4fpsmod")
+        if binary:
+            logging.info(f"Using system mp4fpsmod: {binary}")
     
     if not binary:
-        logging.error("mp4fpsmod not found! Cannot create retimed video.")
+        logging.error("mp4fpsmod not found! Please place binary in project/bin/ directory")
+        logging.error(f"Expected location: {local_binary}")
         # Fallback - just copy the original
         shutil.copy2(input_video_path, output_retimed_video_path)
         return
