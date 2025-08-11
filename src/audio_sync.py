@@ -18,7 +18,19 @@ from .binary_utils import get_ffmpeg, get_ffprobe, get_mp4fpsmod
 def extract_and_standardize_audio(input_path, output_audio_path):
     """Extract and standardize audio to 16kHz mono PCM."""
     ffmpeg_path = get_ffmpeg()
+    logging.info(f"🔍 Looking for ffmpeg: {ffmpeg_path}")
     if not ffmpeg_path:
+        # Debug info
+        import os
+        current_dir = os.getcwd()
+        bin_dir = os.path.join(current_dir, "bin")
+        logging.error(f"❌ ffmpeg not found!")
+        logging.error(f"   Current dir: {current_dir}")
+        logging.error(f"   Bin dir: {bin_dir}")
+        logging.error(f"   Bin exists: {os.path.exists(bin_dir)}")
+        if os.path.exists(bin_dir):
+            files = os.listdir(bin_dir)
+            logging.error(f"   Bin contents: {files}")
         raise RuntimeError("ffmpeg not found! Place ffmpeg binary in bin/ directory")
     
     command = [

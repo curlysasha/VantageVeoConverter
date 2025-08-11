@@ -26,6 +26,8 @@ def get_binary_path(binary_name):
         os.path.dirname(current_dir),  # ../bin (relative to src/)
         os.getcwd(),                   # ./bin (current working directory)  
         os.path.dirname(os.getcwd()),  # ../bin (if running from subdirectory)
+        "/workspace/VantageVeoConverter",  # Absolute path for Docker
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),  # Project root from src/
     ]
     
     # Try to find main app file and use its directory
