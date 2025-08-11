@@ -48,9 +48,13 @@ def create_physical_retime(input_video_path, timecode_path, output_path):
     
     logging.info(f"Target: {target_fps} FPS, {target_frame_duration_ms:.1f}ms per frame")
     
-    # Create output video
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, target_fps, (width, height))
+    # Create temporary frames directory
+    import tempfile
+    temp_dir = tempfile.mkdtemp(prefix="physical_retime_")
+    frames_dir = os.path.join(temp_dir, "frames")
+    os.makedirs(frames_dir, exist_ok=True)
+    
+    logging.info(f"Using temporary frames directory: {frames_dir}")
     
     # Generate output frames based on timecodes
     output_frame_count = 0
@@ -95,14 +99,46 @@ def create_physical_retime(input_video_path, timecode_path, output_path):
                 is_duplicate = True
                 duplicate_count += 1
         
-        # Write the frame
-        out.write(all_frames[input_frame_idx])
+        # Save frame as PNG
+        frame_filename = os.path.join(frames_dir, f"frame_{output_frame_count:06d}.png")
+        cv2.imwrite(frame_filename, all_frames[input_frame_idx])
         output_frame_count += 1
         
         if output_frame_count % 100 == 0:
             logging.info(f"   Progress: {output_frame_count} frames ({duplicate_count} duplicates)")
     
-    out.release()
+    # Create video using FFmpeg with high quality settings
+    logging.info("Creating high-quality video with FFmpeg...")
+    from .binary_utils import get_ffmpeg
+    
+    ffmpeg_path = get_ffmpeg()
+    if not ffmpeg_path:
+        raise RuntimeError("ffmpeg not found! Place ffmpeg binary in bin/ directory")
+    
+    # High quality FFmpeg command
+    ffmpeg_cmd = [
+        ffmpeg_path, '-y',
+        '-framerate', str(target_fps),
+        '-i', os.path.join(frames_dir, 'frame_%06d.png'),
+        '-c:v', 'libx264',
+        '-preset', 'slow',        # Better compression
+        '-crf', '15',            # High quality (lower = better)
+        '-pix_fmt', 'yuv420p',
+        output_path
+    ]
+    
+    try:
+        import subprocess
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, check=True)
+        logging.info("FFmpeg video creation successful")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg failed: {e.stderr}")
+        raise RuntimeError(f"Video creation failed: {e.stderr}")
+    
+    # Cleanup temporary files
+    import shutil
+    shutil.rmtree(temp_dir)
+    logging.info(f"Cleaned up temporary directory: {temp_dir}")
     
     duplicate_pct = (duplicate_count / output_frame_count * 100) if output_frame_count > 0 else 0
     

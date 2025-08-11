@@ -182,8 +182,9 @@ def repair_freezes_with_rife(video_path, freeze_predictions, output_path, rife_m
             '-framerate', str(fps),
             '-i', os.path.join(frames_dir, 'frame_%06d.png'),
             '-c:v', 'libx264',
+            '-preset', 'slow',      # Better compression  
+            '-crf', '15',           # Higher quality (was 18)
             '-pix_fmt', 'yuv420p',
-            '-crf', '18',  # High quality
             temp_output_path
         ]
         
