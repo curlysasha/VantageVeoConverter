@@ -165,6 +165,9 @@ def synchronization_workflow(input_video_path, target_audio_path, use_rife=True,
                 progress(0.8, desc="7/8: Predicting and repairing freezes with RIFE...")
                 freeze_predictions = predict_freezes_from_timecodes(paths["timecodes"])
                 
+                # Initialize interpolation_applied variable
+                interpolation_applied = False
+                
                 if freeze_predictions:
                     # Apply RIFE repair to synchronized video with audio (same as diagnostic)
                     interpolation_applied = repair_freezes_with_rife(
