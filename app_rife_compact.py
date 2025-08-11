@@ -52,6 +52,13 @@ from src.binary_utils import check_all_binaries, get_ffmpeg, get_ffprobe
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Add local bin directory to PATH so Whisper can find ffmpeg
+bin_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin")
+if os.path.exists(bin_dir):
+    current_path = os.environ.get('PATH', '')
+    os.environ['PATH'] = f"{bin_dir}{os.pathsep}{current_path}"
+    logging.info(f"Added {bin_dir} to PATH for Whisper compatibility")
+
 # --- Global Setup: Load Models Once ---
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 WHISPER_MODEL = None
