@@ -84,8 +84,9 @@ def check_dependencies():
         missing.append(f"mp4fpsmod (place binary in {project_dir}/bin/)")
     
     if not shutil.which("ffmpeg"): missing.append("ffmpeg")
-    if not shutil.which("espeak-ng") and not shutil.which("espeak"):
-         missing.append("espeak/espeak-ng")
+    # espeak is optional - only warn if missing
+    # if not shutil.which("espeak-ng") and not shutil.which("espeak"):
+    #      missing.append("espeak/espeak-ng")
     if missing:
         raise EnvironmentError(f"Missing dependencies: {', '.join(missing)}.")
 

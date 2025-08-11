@@ -12,6 +12,9 @@ import whisper
 import logging
 import warnings
 
+# Import binary utilities
+from .binary_utils import get_ffmpeg, get_ffprobe, get_mp4fpsmod
+
 def extract_and_standardize_audio(input_path, output_audio_path):
     """Extract and standardize audio to 16kHz mono PCM."""
     command = [
