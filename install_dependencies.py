@@ -23,9 +23,47 @@ def run_pip_command(args, description):
         print(f"   Error: {e.stderr}")
         return False
 
+def install_system_deps():
+    """Install system dependencies for aeneas"""
+    print("📦 Installing system dependencies for aeneas...")
+    
+    # Try apt-get (Ubuntu/Debian)
+    try:
+        cmd = ["apt-get", "update"]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode == 0:
+            cmd = ["apt-get", "install", "-y", "espeak", "libespeak-dev", "libasound2-dev", "build-essential"]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                print("✅ System dependencies installed via apt-get")
+                return True
+            else:
+                print("⚠️ apt-get install failed, trying without sudo...")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        print("⚠️ apt-get not available or failed")
+    
+    # Try without sudo (Docker containers)
+    try:
+        cmd = ["apt", "update"]
+        subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=True)
+        cmd = ["apt", "install", "-y", "espeak", "libespeak-dev", "libasound2-dev", "build-essential"] 
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=True)
+        print("✅ System dependencies installed via apt")
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        print("⚠️ apt not available")
+    
+    print("❌ Could not install system dependencies automatically")
+    print("   Run manually: apt-get install espeak libespeak-dev libasound2-dev build-essential")
+    return False
+
 def install_dependencies():
     """Install all dependencies in correct order"""
     print("🚀 VantageVeoConverter Dependency Installer\n")
+    
+    # Install system dependencies first
+    install_system_deps()
+    print()
     
     # Step 1: Install modern numpy first
     print("1️⃣ Installing core dependencies...")
