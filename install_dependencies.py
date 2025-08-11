@@ -30,7 +30,7 @@ def install_dependencies():
     # Step 1: Core dependencies first (older numpy for aeneas compatibility)
     print("1️⃣ Installing core dependencies...")
     if not run_pip_command([
-        "numpy==1.21.6",  # Older numpy compatible with aeneas
+        "numpy==1.21.1",  # Older numpy compatible with aeneas
         "scipy>=1.9.0"
     ], "Core libraries (numpy, scipy)"):
         return False
@@ -60,13 +60,13 @@ def install_dependencies():
     # Approach 3: Force reinstall older numpy then aeneas
     if not aeneas_installed:
         print("   Trying older numpy for compatibility...")
-        run_pip_command(["--force-reinstall", "numpy==1.21.6"], "numpy (older version)")
+        run_pip_command(["--force-reinstall", "numpy==1.21.1"], "numpy (older version)")
         if run_pip_command(["aeneas>=1.7.3"], "aeneas (with older numpy)"):
             aeneas_installed = True
     
     if not aeneas_installed:
         print("❌ Could not install aeneas. Manual install:")
-        print("   pip install numpy==1.21.6 && pip install aeneas")
+        print("   pip install numpy==1.21.1 && pip install aeneas")
         return False
     
     print("\n✅ All dependencies installed successfully!")
