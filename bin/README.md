@@ -61,3 +61,34 @@ bin/
 ├── mp4fpsmod   (or mp4fpsmod.exe)
 └── README.md
 ```
+
+## Deployment Options:
+
+### 1. Local bin/ directory (recommended):
+Place binaries in `bin/` directory relative to project root
+
+### 2. Environment variables:
+```bash
+export FFMPEG_PATH=/path/to/ffmpeg
+export FFPROBE_PATH=/path/to/ffprobe  
+export MP4FPSMOD_PATH=/path/to/mp4fpsmod
+```
+
+### 3. System PATH:
+Install binaries system-wide so they're available in PATH
+
+### 4. Docker deployment:
+```dockerfile
+FROM ubuntu:22.04
+RUN apt update && apt install -y ffmpeg
+COPY bin/mp4fpsmod /usr/local/bin/
+COPY . /app
+WORKDIR /app
+CMD ["python", "app_rife_compact.py"]
+```
+
+The system will automatically search in this order:
+1. Project bin/ directory (multiple possible locations)
+2. Environment variables (FFMPEG_PATH, etc.)
+3. System PATH
+4. Shows detailed error if not found

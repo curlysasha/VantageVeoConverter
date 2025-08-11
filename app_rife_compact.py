@@ -47,7 +47,7 @@ from src.timecode_freeze_predictor import predict_freezes_from_timecodes
 from src.audio_sync import *
 from src.physical_retime import create_physical_retime
 from src.triple_diagnostic import create_triple_diagnostic
-from src.binary_utils import check_all_binaries
+from src.binary_utils import check_all_binaries, get_ffmpeg
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -168,9 +168,14 @@ def synchronization_workflow(input_video_path, target_audio_path, use_rife=True,
                         progress(0.85, desc="7/8: Adding audio to AI-repaired video...")
                         paths["interpolated_with_audio"] = os.path.join(temp_dir, "interpolated_with_audio.mp4") 
                         try:
+                            # Get ffmpeg path
+                            ffmpeg_path = get_ffmpeg()
+                            if not ffmpeg_path:
+                                raise RuntimeError("ffmpeg not found! Place ffmpeg binary in bin/ directory")
+                            
                             # Add audio from synchronized video (same as diagnostic)
                             cmd = [
-                                'ffmpeg', '-y',
+                                ffmpeg_path, '-y',
                                 '-i', paths["interpolated_video"],      # RIFE video (no audio)
                                 '-i', synchronized_video_with_audio,   # Audio source
                                 '-c:v', 'copy',                        # Copy video as-is
