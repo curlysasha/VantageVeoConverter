@@ -54,8 +54,9 @@ RUN pip install "setuptools==59.5.0"
 
 # CRITICAL: Force install NumPy < 2.0 for Whisper compatibility
 # RunPod base image has NumPy 2.x which breaks Whisper
-RUN pip uninstall -y numpy && \
-    pip install --no-cache-dir --force-reinstall "numpy>=1.24,<2.0" && \
+RUN pip uninstall -y numpy || true && \
+    pip install --no-cache-dir --force-reinstall "numpy==1.26.4" && \
+    python -c "import numpy; print(f'NumPy version: {numpy.__version__}'); assert numpy.__version__.startswith('1.'), 'NumPy 2.x detected! Build failed!'" && \
     pip install "scipy>=1.9.0"
 
 # Install PyTorch suite (use RunPod's pre-installed version if available)
@@ -66,11 +67,10 @@ RUN pip install "torch>=1.12.0" "torchvision>=0.13.0" "torchaudio>=0.12.0" \
 # Install RunPod SDK
 RUN pip install "runpod>=1.0.0"
 
-# Install main application dependencies
+# Install main application dependencies (except Whisper)
 RUN pip install \
     "opencv-python>=4.5.0" \
     "scikit-image>=0.19.0" \
-    "openai-whisper>=20230314" \
     "librosa>=0.9.0" \
     "tqdm>=4.64.0" \
     "Pillow>=9.0.0" \
@@ -79,6 +79,12 @@ RUN pip install \
     "psutil>=5.8.0" \
     "ffmpeg-python>=0.2.0" \
     "boto3>=1.26.0"
+
+# Install Whisper with explicit NumPy check
+RUN pip install --no-deps "openai-whisper>=20230314" && \
+    pip install "tiktoken" "more-itertools" "regex" && \
+    python -c "import numpy; import whisper; print(f'✅ NumPy {numpy.__version__} and Whisper installed')" || \
+    (echo "❌ CRITICAL: Whisper installation failed!" && exit 1)
 
 # Install aeneas with multiple strategies (REQUIRED for audio sync)
 RUN echo "Installing aeneas (REQUIRED for audio synchronization)..." && \
@@ -114,12 +120,27 @@ RUN chmod +x /app/runpod_handler.py
 # Add /app/bin to PATH for runtime
 ENV PATH="/app/bin:$PATH"
 
-# Pre-download common models to reduce cold start time
-RUN python -c "import whisper; whisper.load_model('base')" || echo "Whisper download failed, will download at runtime"
+# FINAL VERIFICATION: Check all critical components
+RUN python -c "\
+import sys; \
+import numpy; \
+import torch; \
+import whisper; \
+import runpod; \
+print(f'✅ NumPy version: {numpy.__version__}'); \
+assert numpy.__version__.startswith('1.'), f'FATAL: NumPy 2.x detected ({numpy.__version__}), Whisper will not work!'; \
+print(f'✅ PyTorch version: {torch.__version__}'); \
+print(f'✅ Whisper loaded successfully'); \
+print(f'✅ All critical components verified'); \
+" || (echo "❌ FATAL: Critical component verification failed!" && exit 1)
+
+# Pre-download Whisper model
+RUN python -c "import whisper; model = whisper.load_model('base'); print('✅ Whisper base model downloaded')" || \
+    (echo "❌ FATAL: Cannot download Whisper model!" && exit 1)
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import torch; import runpod; print('Container healthy')" || exit 1
+    CMD python -c "import torch; import numpy; import whisper; import runpod; print('Container healthy')" || exit 1
 
 # Expose port for local testing (RunPod handles this automatically)
 EXPOSE 8080
