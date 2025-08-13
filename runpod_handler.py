@@ -462,12 +462,12 @@ def diagnostic_workflow(video_path, audio_path, output_dir, job_id):
     diagnostic_path = os.path.join(output_dir, "diagnostic_comparison.mp4")
     
     try:
-        # Create triple diagnostic (Original + Detection + AI Repair)
+        # Create triple diagnostic (synchronized_video_path, timecode_path, output_path, rife_model)
         create_triple_diagnostic(
-            original_video=video_path,
-            synchronized_video=sync_result["synchronized_video"], 
-            timecodes_file=sync_result["timecodes"],
-            output_path=diagnostic_path
+            sync_result["synchronized_video"],
+            sync_result["timecodes"], 
+            diagnostic_path,
+            RIFE_MODEL
         )
         
         processing_time = time.time() - start_time
