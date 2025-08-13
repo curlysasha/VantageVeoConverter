@@ -134,25 +134,11 @@ def upload_result_file(file_path, job_id):
         file_size = os.path.getsize(file_path)
         logger.info(f"📤 Uploading result file: {file_size} bytes")
         
-        # For files < 10MB, return as base64
-        if file_size < 10 * 1024 * 1024:
-            with open(file_path, 'rb') as f:
-                encoded = base64.b64encode(f.read()).decode('utf-8')
-            logger.info("✅ File encoded as base64")
-            return f"data:video/mp4;base64,{encoded}"
-        
-        # For larger files, try to upload to RunPod's storage
-        try:
-            from runpod.serverless.utils import rp_upload
-            url = rp_upload.upload_image(job_id, file_path)
-            logger.info(f"✅ File uploaded to: {url}")
-            return url
-        except Exception as upload_error:
-            logger.warning(f"Upload failed, falling back to base64: {upload_error}")
-            # Fallback to base64 even for large files
-            with open(file_path, 'rb') as f:
-                encoded = base64.b64encode(f.read()).decode('utf-8')
-            return f"data:video/mp4;base64,{encoded}"
+        # Always return as base64 for testing (RunPod upload doesn't work reliably)
+        with open(file_path, 'rb') as f:
+            encoded = base64.b64encode(f.read()).decode('utf-8')
+        logger.info(f"✅ File encoded as base64 ({file_size} bytes)")
+        return f"data:video/mp4;base64,{encoded}"
             
     except Exception as e:
         logger.error(f"❌ Failed to process result file: {e}")
