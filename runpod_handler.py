@@ -354,18 +354,31 @@ def synchronization_workflow(video_path, audio_path, output_dir, use_rife, rife_
     
     # Audio synchronization
     try:
-        sync_result = synchronize_audio_video_workflow(
-            video_path=paths["original_video"],
-            target_audio_path=paths["target_audio"],
-            whisper_model=WHISPER_MODEL,
-            output_dir=output_dir
+        # Step 1: Extract and standardize audio  
+        source_audio_path = os.path.join(output_dir, "source_16k.wav")
+        target_audio_path = os.path.join(output_dir, "target_16k.wav")
+        extract_and_standardize_audio(paths["original_video"], source_audio_path)
+        extract_and_standardize_audio(paths["target_audio"], target_audio_path)
+        
+        # Step 2: Transcribe
+        transcript_path = os.path.join(output_dir, "transcript.txt")
+        transcribe_audio(source_audio_path, transcript_path, WHISPER_MODEL)
+        
+        # Step 3: Forced alignment
+        align_source_path = os.path.join(output_dir, "align_source.json")
+        align_target_path = os.path.join(output_dir, "align_target.json")
+        forced_alignment(source_audio_path, transcript_path, align_source_path)
+        forced_alignment(target_audio_path, transcript_path, align_target_path)
+        
+        # Step 4: Generate VFR timecodes
+        generate_vfr_timecodes(
+            paths["original_video"],
+            align_source_path, 
+            align_target_path,
+            paths["timecodes"]
         )
         
-        if not sync_result["success"]:
-            raise Exception(f"Audio sync failed: {sync_result.get('error', 'Unknown error')}")
-        
-        paths["sync_audio"] = sync_result["sync_audio_path"]
-        paths["timecodes"] = sync_result["timecodes_path"]
+        paths["sync_audio"] = target_audio_path
         
     except Exception as e:
         raise Exception(f"Audio synchronization failed: {str(e)}")
