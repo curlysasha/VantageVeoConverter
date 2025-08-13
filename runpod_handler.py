@@ -163,15 +163,32 @@ def upload_result_file(file_path, job_id):
         logger.error(f"❌ Failed to process result file: {e}")
         return None
 
+def decode_base64_file(base64_str: str, output_path: str) -> str:
+    """Decode base64 string to file"""
+    try:
+        file_data = base64.b64decode(base64_str)
+        with open(output_path, 'wb') as f:
+            f.write(file_data)
+        return output_path
+    except Exception as e:
+        raise ValueError(f"Failed to decode base64 file: {str(e)}")
+
 def handler(job):
     """
     Main RunPod serverless handler for VantageVeoConverter.
     
-    Input format:
+    Input format (supports URLs or base64):
     {
         "input": {
+            # Option 1: URLs
             "video_url": "https://example.com/video.mp4",
-            "audio_url": "https://example.com/audio.wav", 
+            "audio_url": "https://example.com/audio.wav",
+            
+            # Option 2: Base64 encoded files
+            "video_base64": "base64_encoded_video_data",
+            "audio_base64": "base64_encoded_audio_data",
+            
+            # Optional parameters
             "use_rife": true,  # Optional, default True
             "diagnostic_mode": false,  # Optional, default False
             "rife_mode": "adaptive",  # Optional: "off", "adaptive", "precision", "maximum"
@@ -182,19 +199,27 @@ def handler(job):
     logger.info(f"🎬 Starting VantageVeoConverter job {job_id}")
     
     try:
-        # Parse input
+        # Parse input - support both URLs and base64
         job_input = job.get("input", {})
+        
+        # Video input (URL or base64)
         video_url = job_input.get("video_url")
+        video_base64 = job_input.get("video_base64")
+        
+        # Audio input (URL or base64) 
         audio_url = job_input.get("audio_url")
+        audio_base64 = job_input.get("audio_base64")
+        
+        # Other parameters
         use_rife = job_input.get("use_rife", True)
         diagnostic_mode = job_input.get("diagnostic_mode", False)
         rife_mode = job_input.get("rife_mode", "adaptive")
         
-        # Validate input
-        if not video_url:
-            return {"error": "video_url is required"}
-        if not audio_url:
-            return {"error": "audio_url is required"}
+        # Validate input - require either URL or base64 for both video and audio
+        if not video_url and not video_base64:
+            return {"error": "video_url or video_base64 is required"}
+        if not audio_url and not audio_base64:
+            return {"error": "audio_url or audio_base64 is required"}
         
         logger.info(f"📋 Job config: use_rife={use_rife}, diagnostic={diagnostic_mode}, rife_mode={rife_mode}")
         
@@ -208,16 +233,38 @@ def handler(job):
         if use_rife and RIFE_MODEL is None:
             return {"error": "RIFE model not loaded but use_rife=True"}
         
-        # Download files
-        logger.info("📥 Downloading input files...")
-        try:
-            video_path = download_file(video_url, f"input_video_{job_id}.mp4")
-            audio_path = download_file(audio_url, f"input_audio_{job_id}.wav")
-        except Exception as e:
-            return {"error": f"Failed to download input files: {str(e)}"}
-        
-        # Create temporary directory for outputs
+        # Create temporary directory for this job
+        temp_job_dir = tempfile.mkdtemp(prefix=f"vantage_job_{job_id}_")
         temp_output_dir = tempfile.mkdtemp(prefix=f"vantage_job_{job_id}_")
+        
+        # Get input files - support both URLs and base64
+        logger.info("📥 Processing input files...")
+        try:
+            # Process video input
+            if video_url:
+                logger.info(f"📥 Downloading video from URL...")
+                video_path = download_file(video_url, f"input_video_{job_id}.mp4")
+            else:
+                logger.info(f"📥 Decoding video from base64...")
+                video_path = os.path.join(temp_job_dir, f"input_video_{job_id}.mp4")
+                decode_base64_file(video_base64, video_path)
+                file_size = os.path.getsize(video_path)
+                logger.info(f"✅ Video decoded: {file_size} bytes")
+            
+            # Process audio input  
+            if audio_url:
+                logger.info(f"📥 Downloading audio from URL...")
+                audio_path = download_file(audio_url, f"input_audio_{job_id}.wav")
+            else:
+                logger.info(f"📥 Decoding audio from base64...")
+                audio_path = os.path.join(temp_job_dir, f"input_audio_{job_id}.wav")
+                decode_base64_file(audio_base64, audio_path)
+                file_size = os.path.getsize(audio_path)
+                logger.info(f"✅ Audio decoded: {file_size} bytes")
+                
+        except Exception as e:
+            return {"error": f"Failed to process input files: {str(e)}"}
+        
         logger.info(f"📁 Working directory: {temp_output_dir}")
         
         try:
@@ -267,12 +314,14 @@ def handler(job):
             }
             
         finally:
-            # Clean up temporary directory
-            try:
-                shutil.rmtree(temp_output_dir)
-                logger.info(f"🧹 Cleaned up {temp_output_dir}")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to clean up {temp_output_dir}: {e}")
+            # Clean up temporary directories
+            for temp_dir in [temp_job_dir, temp_output_dir]:
+                try:
+                    if os.path.exists(temp_dir):
+                        shutil.rmtree(temp_dir)
+                        logger.info(f"🧹 Cleaned up {temp_dir}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to clean up {temp_dir}: {e}")
     
     except Exception as e:
         logger.error(f"❌ Job {job_id} failed: {str(e)}", exc_info=True)
