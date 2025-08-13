@@ -41,35 +41,41 @@ RUN apt-get update --yes --quiet && \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install mp4fpsmod from source (optimized build)
-RUN git clone https://github.com/nu774/mp4fpsmod.git /tmp/mp4fpsmod && \
-    cd /tmp/mp4fpsmod && \
-    git submodule update --init --recursive && \
-    ./bootstrap.sh && \
-    ./configure --prefix=/usr/local && \
-    make -j$(nproc) && \
-    make install && \
-    ldconfig && \
-    cd / && \
-    rm -rf /tmp/mp4fpsmod
+# mp4fpsmod will be installed from bin/ directory (see below)
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt /app/requirements.txt
 
-# Install Python packages with optimizations
+# Install Python packages with optimizations and special handling for problematic packages
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip setuptools wheel && \
+    pip install --upgrade pip wheel && \
+    # CRITICAL: Install specific setuptools version for aeneas compatibility
+    pip install "setuptools==59.5.0" && \
     # Install NumPy first for compatibility
     pip install "numpy>=1.24,<2.3" && \
-    # Install core dependencies
-    pip install "torch>=1.12.0" "torchvision>=0.13.0" "torchaudio>=0.12.0" && \
-    # Install aeneas with special handling
-    pip install "setuptools==59.5.0" && \
-    pip install --no-build-isolation "aeneas>=1.7.3" && \
-    # Install RunPod SDK
+    pip install "scipy>=1.9.0" && \
+    # Install PyTorch suite (pre-installed in RunPod base but ensure compatibility)
+    pip install "torch>=1.12.0" "torchvision>=0.13.0" "torchaudio>=0.12.0" --index-url https://download.pytorch.org/whl/cu118 && \
+    # Install RunPod SDK first
     pip install "runpod>=1.0.0" && \
-    # Install remaining requirements
-    pip install -r requirements.txt && \
+    # Install main dependencies EXCEPT aeneas
+    pip install \
+        "opencv-python>=4.5.0" \
+        "scikit-image>=0.19.0" \
+        "openai-whisper>=20230314" \
+        "librosa>=0.9.0" \
+        "tqdm>=4.64.0" \
+        "Pillow>=9.0.0" \
+        "requests>=2.25.0" \
+        "numba>=0.56.0" \
+        "psutil>=5.8.0" \
+        "ffmpeg-python>=0.2.0" \
+        "boto3>=1.26.0" && \
+    # Try multiple strategies for aeneas installation
+    (pip install --no-build-isolation "aeneas>=1.7.3" || \
+     pip install "git+https://github.com/readbeyond/aeneas.git" || \
+     pip install "aeneas" || \
+     echo "WARNING: aeneas installation failed, continuing without it") && \
     # Cleanup
     pip cache purge
 

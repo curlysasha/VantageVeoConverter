@@ -15,15 +15,19 @@ import requests
 import time
 import base64
 
-# Импорты существующих модулей
-from src.comfy_rife import ComfyRIFE
-from src.timing_analyzer import analyze_timing_changes
-from src.ai_freeze_repair import repair_freezes_with_rife
-from src.timecode_freeze_predictor import predict_freezes_from_timecodes
-from src.audio_sync import *
-from src.physical_retime import create_physical_retime
-from src.triple_diagnostic import create_triple_diagnostic
-from src.binary_utils import check_all_binaries, get_ffmpeg, get_ffprobe
+# Импорты существующих модулей с обработкой возможных ошибок
+try:
+    from src.comfy_rife import ComfyRIFE
+    from src.timing_analyzer import analyze_timing_changes
+    from src.ai_freeze_repair import repair_freezes_with_rife
+    from src.timecode_freeze_predictor import predict_freezes_from_timecodes
+    from src.audio_sync import *
+    from src.physical_retime import create_physical_retime
+    from src.triple_diagnostic import create_triple_diagnostic
+    from src.binary_utils import check_all_binaries, get_ffmpeg, get_ffprobe
+except ImportError as e:
+    logger.warning(f"Some modules failed to import: {e}")
+    logger.warning("Some features may be unavailable")
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
