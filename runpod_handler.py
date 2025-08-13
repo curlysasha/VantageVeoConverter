@@ -405,8 +405,7 @@ def synchronization_workflow(video_path, audio_path, output_dir, use_rife, rife_
                     paths["final_output"],
                     freeze_data,
                     rife_output_path,
-                    RIFE_MODEL,
-                    mode=rife_mode
+                    RIFE_MODEL
                 )
                 
                 if repair_result["success"]:
