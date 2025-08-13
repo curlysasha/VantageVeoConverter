@@ -52,8 +52,11 @@ RUN pip install --upgrade pip wheel setuptools
 # CRITICAL: Install specific setuptools version for aeneas compatibility
 RUN pip install "setuptools==59.5.0"
 
-# Install core numerical libraries first
-RUN pip install "numpy>=1.24,<2.3" "scipy>=1.9.0"
+# CRITICAL: Force install NumPy < 2.0 for Whisper compatibility
+# RunPod base image has NumPy 2.x which breaks Whisper
+RUN pip uninstall -y numpy && \
+    pip install --no-cache-dir --force-reinstall "numpy>=1.24,<2.0" && \
+    pip install "scipy>=1.9.0"
 
 # Install PyTorch suite (use RunPod's pre-installed version if available)
 RUN pip install "torch>=1.12.0" "torchvision>=0.13.0" "torchaudio>=0.12.0" \

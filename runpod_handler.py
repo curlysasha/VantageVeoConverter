@@ -42,13 +42,8 @@ if os.path.exists(bin_dir):
 
 # --- Global Setup: Load Models Once ---
 import torch
-try:
-    import whisper
-except ImportError as e:
-    logger.warning(f"Whisper import failed: {e}")
-    subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "numba"], 
-                  capture_output=True, text=True)
-    import whisper
+import numpy as np
+import whisper
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 WHISPER_MODEL = None
