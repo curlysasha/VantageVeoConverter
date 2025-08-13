@@ -408,12 +408,12 @@ def synchronization_workflow(video_path, audio_path, output_dir, use_rife, rife_
                     RIFE_MODEL
                 )
                 
-                if repair_result["success"]:
+                if repair_result:  # repair_freezes_with_rife returns True/False
                     # Replace final output with RIFE result
                     shutil.move(rife_output_path, paths["final_output"])
-                    logger.info(f"✅ RIFE repair applied: {repair_result['repairs_applied']} repairs")
+                    logger.info(f"✅ RIFE repair applied to {len(freeze_data)} freeze segments")
                 else:
-                    logger.warning(f"⚠️ RIFE repair failed: {repair_result.get('error', 'Unknown error')}")
+                    logger.warning(f"⚠️ RIFE repair failed or skipped")
             else:
                 logger.info("ℹ️ No freezes detected, skipping RIFE repair")
                 
