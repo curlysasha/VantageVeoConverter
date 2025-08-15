@@ -409,9 +409,16 @@ def synchronization_workflow(video_path, audio_path, output_dir, use_rife, rife_
                 )
                 
                 if repair_result:  # repair_freezes_with_rife returns True/False
-                    # Replace final output with RIFE result
-                    shutil.move(rife_output_path, paths["final_output"])
-                    logger.info(f"✅ RIFE repair applied to {len(freeze_data)} freeze segments")
+                    # RIFE creates video without audio, need to add it back
+                    rife_with_audio_path = os.path.join(output_dir, "rife_with_audio.mp4")
+                    
+                    # Add audio from target audio to RIFE result
+                    logger.info("🔊 Adding audio back to RIFE-repaired video...")
+                    mux_final_output(rife_output_path, paths["sync_audio"], rife_with_audio_path)
+                    
+                    # Replace final output with RIFE result with audio
+                    shutil.move(rife_with_audio_path, paths["final_output"])
+                    logger.info(f"✅ RIFE repair applied to {len(freeze_data)} freeze segments with audio")
                 else:
                     logger.warning(f"⚠️ RIFE repair failed or skipped")
             else:
