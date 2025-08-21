@@ -126,6 +126,8 @@ System dependencies (Ubuntu/Debian):
     # Read and analyze the alignment results
     try:
         import json
+        logging.info(f"🔍 Reading alignment results from: {output_alignment_path}")
+        
         with open(output_alignment_path, 'r') as f:
             alignment_data = json.load(f)
             fragments = alignment_data.get('fragments', [])
@@ -150,8 +152,22 @@ System dependencies (Ubuntu/Debian):
                 begin = float(fragment.get('begin', 0))
                 end = float(fragment.get('end', 0))
                 logging.info(f"   [{i+1}] \"{word}\" → {begin:.2f}s - {end:.2f}s")
+        else:
+            logging.warning("⚠️ No alignment fragments found in output file!")
+    except FileNotFoundError:
+        logging.error(f"❌ Alignment output file not found: {output_alignment_path}")
+    except json.JSONDecodeError as e:
+        logging.error(f"❌ Invalid JSON in alignment file: {e}")
     except Exception as e:
-        logging.warning(f"Could not analyze alignment results: {e}")
+        logging.error(f"❌ Error analyzing alignment results: {e}")
+        logging.error(f"   Alignment file exists: {os.path.exists(output_alignment_path)}")
+        if os.path.exists(output_alignment_path):
+            try:
+                with open(output_alignment_path, 'r') as f:
+                    content = f.read()[:200]
+                logging.error(f"   File content (first 200 chars): {content}")
+            except:
+                pass
     
     logging.info("="*80 + "\n")
 
