@@ -53,10 +53,14 @@ def transcribe_audio(audio_path, output_transcript_path, whisper_model):
     
     result = whisper_model.transcribe(audio_path)
     text = result["text"]
-    formatted_text = text.strip().replace('. ', '.\n').replace('? ', '?\n')
+    
+    # For word-level alignment with Aeneas, we need each word on a separate line
+    # This allows Aeneas to create individual timing for each word
+    words = text.strip().split()
+    formatted_text = '\n'.join(words)  # Each word on its own line
     
     # Count words and sentences
-    word_count = len(text.split())
+    word_count = len(words)
     sentence_count = text.count('.') + text.count('?') + text.count('!')
     
     logging.info("\n" + "-"*80)
@@ -114,12 +118,16 @@ System dependencies (Ubuntu/Debian):
         word_count = "unknown"
     
     logging.info(f"📊 Processing {word_count} words for alignment")
+    logging.info("🔧 Using word-level alignment settings")
     
+    # Use word-level presets for better accuracy
+    # Each line in transcript is treated as a separate fragment (word)
     command = [
         "python3", "-m", "aeneas.tools.execute_task",
         audio_path, transcript_path,
         "task_language=eng|os_task_file_format=json|is_text_type=plain",
-        output_alignment_path
+        output_alignment_path,
+        "--presets-word"  # Enable word-level optimization presets
     ]
     run_command(command)
     
