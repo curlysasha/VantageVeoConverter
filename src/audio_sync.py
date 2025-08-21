@@ -153,10 +153,9 @@ System dependencies (Ubuntu/Debian):
             logging.info(f"   • Last word at: {last_word_time:.2f}s")
             logging.info(f"   • Total duration: {last_word_time:.2f}s")
             
-            # Show first few alignments as preview
-            preview_count = min(10, len(fragments))  # Show up to 10 words
-            logging.info(f"\n📍 ALIGNMENT PREVIEW (first {preview_count} words):")
-            for i, fragment in enumerate(fragments[:preview_count]):
+            # Show ALL word alignments
+            logging.info(f"\n📍 COMPLETE WORD ALIGNMENT ({len(fragments)} words):")
+            for i, fragment in enumerate(fragments):
                 word = fragment.get('lines', [''])[0] if 'lines' in fragment else 'N/A'
                 begin = float(fragment.get('begin', 0))
                 end = float(fragment.get('end', 0))
