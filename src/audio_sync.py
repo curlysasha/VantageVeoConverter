@@ -44,9 +44,32 @@ def transcribe_audio(audio_path, output_transcript_path, whisper_model):
     if whisper_model is None: 
         raise RuntimeError("Whisper model not loaded.")
     
+    logging.info("\n" + "="*80)
+    logging.info("🎤 WHISPER TRANSCRIPTION STARTING")
+    logging.info("="*80)
+    logging.info(f"📂 Audio file: {audio_path}")
+    logging.info(f"📝 Output will be saved to: {output_transcript_path}")
+    logging.info("⏳ Processing... This may take a moment...")
+    
     result = whisper_model.transcribe(audio_path)
     text = result["text"]
     formatted_text = text.strip().replace('. ', '.\n').replace('? ', '?\n')
+    
+    # Count words and sentences
+    word_count = len(text.split())
+    sentence_count = text.count('.') + text.count('?') + text.count('!')
+    
+    logging.info("\n" + "-"*80)
+    logging.info("✅ WHISPER TRANSCRIPTION COMPLETE!")
+    logging.info("-"*80)
+    logging.info(f"📊 Statistics:")
+    logging.info(f"   • Words transcribed: {word_count}")
+    logging.info(f"   • Sentences detected: {sentence_count}")
+    logging.info(f"   • Language: {result.get('language', 'unknown')}")
+    logging.info(f"\n📜 TRANSCRIPT PREVIEW (first 200 chars):")
+    logging.info(f"   \"{text[:200]}{'...' if len(text) > 200 else ''}\"")
+    logging.info("="*80 + "\n")
+    
     with open(output_transcript_path, 'w') as f:
         f.write(formatted_text) 
     return formatted_text
@@ -74,6 +97,24 @@ System dependencies (Ubuntu/Debian):
         logging.error(error_msg)
         raise RuntimeError("Aeneas not available. Run: python install_dependencies.py")
     
+    logging.info("\n" + "="*80)
+    logging.info("🎯 AENEAS FORCED ALIGNMENT STARTING")
+    logging.info("="*80)
+    logging.info(f"🎵 Audio file: {audio_path}")
+    logging.info(f"📄 Transcript file: {transcript_path}")
+    logging.info(f"📍 Output alignment: {output_alignment_path}")
+    logging.info("⏳ Aligning words to audio timestamps...")
+    
+    # Read transcript to count words
+    try:
+        with open(transcript_path, 'r') as f:
+            transcript_text = f.read()
+            word_count = len(transcript_text.split())
+    except:
+        word_count = "unknown"
+    
+    logging.info(f"📊 Processing {word_count} words for alignment")
+    
     command = [
         "python3", "-m", "aeneas.tools.execute_task",
         audio_path, transcript_path,
@@ -81,6 +122,38 @@ System dependencies (Ubuntu/Debian):
         output_alignment_path
     ]
     run_command(command)
+    
+    # Read and analyze the alignment results
+    try:
+        import json
+        with open(output_alignment_path, 'r') as f:
+            alignment_data = json.load(f)
+            fragments = alignment_data.get('fragments', [])
+            
+        logging.info("\n" + "-"*80)
+        logging.info("✅ AENEAS ALIGNMENT COMPLETE!")
+        logging.info("-"*80)
+        logging.info(f"📊 Alignment Statistics:")
+        logging.info(f"   • Total fragments aligned: {len(fragments)}")
+        
+        if fragments:
+            first_word_time = float(fragments[0].get('begin', 0))
+            last_word_time = float(fragments[-1].get('end', 0))
+            logging.info(f"   • First word at: {first_word_time:.2f}s")
+            logging.info(f"   • Last word at: {last_word_time:.2f}s")
+            logging.info(f"   • Total duration: {last_word_time:.2f}s")
+            
+            # Show first few alignments as preview
+            logging.info(f"\n📍 ALIGNMENT PREVIEW (first 5 words):")
+            for i, fragment in enumerate(fragments[:5]):
+                word = fragment.get('lines', [''])[0] if 'lines' in fragment else 'N/A'
+                begin = float(fragment.get('begin', 0))
+                end = float(fragment.get('end', 0))
+                logging.info(f"   [{i+1}] \"{word}\" → {begin:.2f}s - {end:.2f}s")
+    except Exception as e:
+        logging.warning(f"Could not analyze alignment results: {e}")
+    
+    logging.info("="*80 + "\n")
 
 def validate_video_format(video_path):
     """Validate video format and codec compatibility."""
