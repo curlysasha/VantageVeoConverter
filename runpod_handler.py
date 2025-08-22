@@ -195,6 +195,7 @@ def handler(job):
         use_rife = job_input.get("use_rife", True)
         diagnostic_mode = job_input.get("diagnostic_mode", False)
         rife_mode = job_input.get("rife_mode", "adaptive")
+        smoothing_mode = job_input.get("smoothing_mode", "medium")  # 'strict', 'medium', 'soft', 'off'
         
         # Validate input - require either URL or base64 for both video and audio
         if not video_url and not video_base64:
@@ -356,12 +357,14 @@ def synchronization_workflow(video_path, audio_path, output_dir, use_rife, rife_
         forced_alignment(source_audio_path, transcript_path, align_source_path)
         forced_alignment(target_audio_path, transcript_path, align_target_path)
         
-        # Step 4: Generate VFR timecodes
+        # Step 4: Generate VFR timecodes with selected smoothing mode
+        logger.info(f"Generating VFR timecodes with smoothing mode: {smoothing_mode}")
         generate_vfr_timecodes(
             paths["original_video"],
             align_source_path, 
             align_target_path,
-            paths["timecodes"]
+            paths["timecodes"],
+            smoothing_mode=smoothing_mode
         )
         
         paths["sync_audio"] = target_audio_path
@@ -435,7 +438,8 @@ def synchronization_workflow(video_path, audio_path, output_dir, use_rife, rife_
         "timecodes": paths["timecodes"],
         "processing_time": processing_time,
         "use_rife": use_rife,
-        "rife_mode": rife_mode if use_rife else None
+        "rife_mode": rife_mode if use_rife else None,
+        "smoothing_mode": smoothing_mode
     }
 
 def diagnostic_workflow(video_path, audio_path, output_dir, job_id):
