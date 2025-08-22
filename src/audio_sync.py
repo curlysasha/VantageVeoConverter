@@ -5,7 +5,7 @@ import subprocess
 import os
 import json
 import numpy as np
-from scipy.interpolate import interp1d, CubicSpline
+from scipy.interpolate import interp1d, CubicSpline, PchipInterpolator
 from scipy.signal import savgol_filter
 import cv2
 import whisper
@@ -278,9 +278,13 @@ def detect_vfr_and_get_fps(video_path, video_info=None):
     return opencv_fps, False
 
 def generate_vfr_timecodes(video_path, align_source_path, align_target_path, output_timecode_path,
-                          smooth_interpolation=True, progress_callback=None):
-    """Enhanced VFR timecode generation with smoothing and better edge handling."""
-    logging.info("Generating VFR timecodes with improvements...")
+                          smooth_interpolation=True, smoothing_mode='medium', progress_callback=None):
+    """Enhanced VFR timecode generation with advanced smoothing algorithms.
+    
+    Args:
+        smoothing_mode: 'strict' (±10%), 'medium' (±20%), 'soft' (±30%), or 'off'
+    """
+    logging.info(f"Generating VFR timecodes with smoothing mode: {smoothing_mode}...")
     
     with open(align_source_path) as f: align_source = json.load(f)
     with open(align_target_path) as f: align_target = json.load(f)
@@ -313,15 +317,16 @@ def generate_vfr_timecodes(video_path, align_source_path, align_target_path, out
         else:
             T_target.append(video_duration)
     
-    # Enhanced interpolation
+    # Enhanced interpolation with PCHIP (no overshoots!)
     if smooth_interpolation and len(T_source) > 3:
         try:
-            alignment_func = CubicSpline(T_source, T_target, bc_type='natural', extrapolate=False)
-            logging.info("Using cubic spline interpolation for smoother time warping")
+            # PCHIP: Monotonic interpolation without overshoots
+            alignment_func = PchipInterpolator(T_source, T_target, extrapolate=False)
+            logging.info("Using PCHIP interpolation (monotonic, no overshoots)")
         except:
             alignment_func = interp1d(T_source, T_target, kind='linear', 
                                     bounds_error=False, fill_value=(T_target[0], T_target[-1]))
-            logging.info("Using linear interpolation")
+            logging.info("Fallback to linear interpolation")
     else:
         alignment_func = interp1d(T_source, T_target, kind='linear',
                                 bounds_error=False, fill_value=(T_target[0], T_target[-1]))
@@ -342,14 +347,63 @@ def generate_vfr_timecodes(video_path, align_source_path, align_target_path, out
     
     new_timestamps = np.array(new_timestamps)
     
-    # Apply smoothing filter
+    # Configure smoothing parameters based on mode
+    if smoothing_mode == 'strict':
+        speed_limits = (0.9, 1.1)  # ±10%
+        moving_avg_window = 2      # 2 words window
+    elif smoothing_mode == 'medium':
+        speed_limits = (0.8, 1.2)  # ±20%
+        moving_avg_window = 3      # 3 words window
+    elif smoothing_mode == 'soft':
+        speed_limits = (0.7, 1.3)  # ±30%
+        moving_avg_window = 5      # 5 words window
+    else:  # 'off'
+        speed_limits = None
+        moving_avg_window = 0
+    
+    # Apply Speed Clamping (limit speed changes)
+    if speed_limits and len(new_timestamps) > 1:
+        logging.info(f"Applying speed clamping: {speed_limits[0]:.1f}x to {speed_limits[1]:.1f}x")
+        
+        # Calculate speed ratios between consecutive frames
+        for i in range(1, len(new_timestamps)):
+            expected_time = original_timestamps[i]
+            actual_time = new_timestamps[i]
+            prev_actual_time = new_timestamps[i-1]
+            prev_expected_time = original_timestamps[i-1]
+            
+            if prev_expected_time != expected_time:
+                speed_ratio = (actual_time - prev_actual_time) / (expected_time - prev_expected_time)
+                
+                # Clamp speed ratio
+                if speed_ratio < speed_limits[0]:
+                    new_timestamps[i] = prev_actual_time + (expected_time - prev_expected_time) * speed_limits[0]
+                elif speed_ratio > speed_limits[1]:
+                    new_timestamps[i] = prev_actual_time + (expected_time - prev_expected_time) * speed_limits[1]
+    
+    # Apply Moving Average smoothing
+    if moving_avg_window > 1 and len(new_timestamps) > moving_avg_window:
+        logging.info(f"Applying moving average with window size: {moving_avg_window}")
+        
+        # Use uniform filter for efficient moving average
+        from scipy.ndimage import uniform_filter1d
+        smoothed = uniform_filter1d(new_timestamps, size=moving_avg_window, mode='nearest')
+        
+        # Preserve start and end points for sync accuracy
+        blend_start = min(moving_avg_window, len(new_timestamps) // 4)
+        blend_end = len(new_timestamps) - blend_start
+        
+        for i in range(blend_start, blend_end):
+            new_timestamps[i] = smoothed[i]
+    
+    # Apply Savitzky-Golay filter as final smoothing step
     if smooth_interpolation and len(new_timestamps) > 51:
         try:
             window_length = min(51, len(new_timestamps) if len(new_timestamps) % 2 == 1 else len(new_timestamps) - 1)
             new_timestamps = savgol_filter(new_timestamps, window_length, 3)
-            logging.info("Applied smoothing filter to timestamps")
+            logging.info("Applied Savitzky-Golay smoothing filter")
         except:
-            logging.warning("Could not apply smoothing filter")
+            logging.warning("Could not apply Savitzky-Golay filter")
     
     new_timestamps_ms = (new_timestamps * 1000).round().astype(int)
 
