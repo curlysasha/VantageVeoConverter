@@ -253,7 +253,7 @@ def handler(job):
             if diagnostic_mode:
                 # Diagnostic mode workflow
                 logger.info("🔍 Running diagnostic mode...")
-                result = diagnostic_workflow(video_path, audio_path, temp_output_dir, job_id)
+                result = diagnostic_workflow(video_path, audio_path, temp_output_dir, job_id, smoothing_mode)
             else:
                 # Normal synchronization workflow  
                 logger.info("⚙️ Running synchronization workflow...")
@@ -263,7 +263,8 @@ def handler(job):
                     temp_output_dir, 
                     use_rife, 
                     rife_mode, 
-                    job_id
+                    job_id,
+                    smoothing_mode
                 )
             
             # Upload result files
@@ -323,7 +324,7 @@ def handler(job):
         except Exception as e:
             logger.warning(f"⚠️ Failed to clean up downloaded files: {e}")
 
-def synchronization_workflow(video_path, audio_path, output_dir, use_rife, rife_mode, job_id):
+def synchronization_workflow(video_path, audio_path, output_dir, use_rife, rife_mode, job_id, smoothing_mode="medium"):
     """Main synchronization workflow."""
     start_time = time.time()
     
@@ -442,7 +443,7 @@ def synchronization_workflow(video_path, audio_path, output_dir, use_rife, rife_
         "smoothing_mode": smoothing_mode
     }
 
-def diagnostic_workflow(video_path, audio_path, output_dir, job_id):
+def diagnostic_workflow(video_path, audio_path, output_dir, job_id, smoothing_mode="medium"):
     """Diagnostic workflow with visual freeze detection."""
     start_time = time.time()
     
@@ -451,7 +452,8 @@ def diagnostic_workflow(video_path, audio_path, output_dir, job_id):
     # First run normal sync workflow
     sync_result = synchronization_workflow(
         video_path, audio_path, output_dir, 
-        use_rife=True, rife_mode="adaptive", job_id=job_id
+        use_rife=True, rife_mode="adaptive", job_id=job_id,
+        smoothing_mode=smoothing_mode
     )
     
     # Create diagnostic visualization
