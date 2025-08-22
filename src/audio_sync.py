@@ -363,6 +363,12 @@ def generate_vfr_timecodes(video_path, align_source_path, align_target_path, out
     elif smoothing_mode == 'soft2':
         speed_limits = (0.6, 1.4)  # ±40%
         moving_avg_window = 5      # 5 words window
+    elif smoothing_mode == 'soft3':
+        speed_limits = (0.6, 1.4)  # ±40%
+        moving_avg_window = 3      # 3 words window
+    elif smoothing_mode == 'soft4':
+        speed_limits = (0.5, 1.5)  # ±50%
+        moving_avg_window = 3      # 3 words window
     else:  # 'off'
         speed_limits = None
         moving_avg_window = 0
